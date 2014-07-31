@@ -1,8 +1,10 @@
-import Prelude
-import qualified Graphics.UI.SDL as SDL
+import Control.Monad.Except
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Marshal.Alloc (free)
+import Foreign.Ptr (nullPtr)
+import qualified Graphics.UI.SDL as SDL
+import Prelude
 
 main :: IO ()
 main = do
@@ -10,18 +12,25 @@ main = do
   e <- SDL.init SDL.initFlagEverything
   if e == 0 then do
     putStrLn "SDL_init succesful"
-    w <- createWindow
-    SDL.delay 3000
-    SDL.destroyWindow w
+    res <- runExceptT createWindow
+    case res of
+      Right w -> do
+        SDL.delay 3000
+        SDL.destroyWindow w
+      Left err -> do
+        putStrLn err
   else getSDLErrorString >>= putStrLn
   SDL.quit
 
 getSDLErrorString :: IO String
 getSDLErrorString = SDL.getError >>= (\e -> SDL.clearError >> peekCString e)
 
-createWindow :: IO SDL.Window
+createWindow :: ExceptT String IO SDL.Window
 createWindow = do
-  t <- newCString "hasgel"
-  w <- SDL.createWindow t (CInt 0) (CInt 0) (CInt 800) (CInt 600) SDL.windowFlagOpenGL
-  free t
-  return w
+  t <- liftIO $ newCString "hasgel"
+  w <- liftIO $ SDL.createWindow t (CInt 0) (CInt 0)
+                      (CInt 800) (CInt 600) SDL.windowFlagOpenGL
+  liftIO $ free t
+  if w == nullPtr
+  then liftIO getSDLErrorString >>= throwError
+  else return w
