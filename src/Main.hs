@@ -2,7 +2,6 @@ module Main ( main ) where
 
 import Control.Monad.Except
 import Foreign.C.String
-import Foreign.C.Types
 import Foreign.Marshal.Alloc (free)
 import Foreign.Ptr (nullPtr)
 import qualified Graphics.UI.SDL as SDL
@@ -15,7 +14,6 @@ main = do
   SDL.setMainReady
   e <- SDL.init SDL.initFlagEverything
   if e == 0 then do
-    putStrLn "SDL_init succesful"
     res <- runExceptT createWindow
     case res of
       Right w -> do
@@ -38,17 +36,24 @@ getSDLErrorString = SDL.getError >>= (\e -> SDL.clearError >> peekCString e)
 
 createWindow :: ExceptT String IO SDL.Window
 createWindow = do
+  v <- liftIO $ SDL.glSetAttribute SDL.glAttrContextMajorVersion 3
+  when (v /= 0) $ liftIO getSDLErrorString >>= throwError
+  v' <- liftIO $ SDL.glSetAttribute SDL.glAttrContextMinorVersion 3
+  when (v' /= 0) $ liftIO getSDLErrorString >>= throwError
+  cfs <- liftIO $
+    SDL.glSetAttribute SDL.glAttrContextFlags SDL.glContextFlagForwardCompatible
+  when (cfs /= 0) $ liftIO getSDLErrorString >>= throwError
+  prof <- liftIO $
+    SDL.glSetAttribute SDL.glAttrContextProfileMask SDL.glProfileCore
+  when (prof /= 0) $ liftIO getSDLErrorString >>= throwError
   t <- liftIO $ newCString "hasgel"
-  w <- liftIO $ SDL.createWindow t (CInt 0) (CInt 0)
-                      (CInt 800) (CInt 600) SDL.windowFlagOpenGL
+  w <- liftIO $ SDL.createWindow t 0 0 800 600 SDL.windowFlagOpenGL
   liftIO $ free t
-  if w == nullPtr
-  then liftIO getSDLErrorString >>= throwError
-  else return w
+  when (w == nullPtr) $ liftIO getSDLErrorString >>= throwError
+  return w
 
 createContext :: SDL.Window -> ExceptT String IO SDL.GLContext
 createContext w = do
   c <- liftIO $ SDL.glCreateContext w
-  if c == nullPtr
-  then liftIO getSDLErrorString >>= throwError
-  else return c
+  when (c == nullPtr) $ liftIO getSDLErrorString >>= throwError
+  return c
