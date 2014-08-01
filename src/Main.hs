@@ -1,3 +1,5 @@
+module Main ( main ) where
+
 import Control.Monad.Except
 import Foreign.C.String
 import Foreign.C.Types
@@ -17,8 +19,7 @@ main = do
       Right w -> do
         SDL.delay 3000
         SDL.destroyWindow w
-      Left err -> do
-        putStrLn err
+      Left err -> putStrLn err
   else getSDLErrorString >>= putStrLn
   SDL.quit
 
