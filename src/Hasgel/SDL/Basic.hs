@@ -40,7 +40,7 @@ init flags = do
   if r == 0 then return Nothing
   else do
     err <- getError
-    return . Just $ "SDL_init error: " ++ err
+    return . Just $ "SDL_init error (" ++ show r ++"): " ++ err
 
 marshalInitFlag :: Num a => InitFlag -> a
 marshalInitFlag x = case x of
