@@ -15,6 +15,8 @@ import Foreign.Marshal.Alloc (free)
 import Foreign.Ptr (nullPtr)
 import qualified Graphics.UI.SDL as SDL
 
+import Hasgel.SDL.Basic as MySDL
+
 -- | Stores resources of a display, and provides functions for rendering
 -- and cleaning up.
 data Display a b = Display {
@@ -29,8 +31,10 @@ data Display a b = Display {
 initDisplay :: ExceptT String IO ()
 initDisplay = do
   --SDL.setMainReady
-  e <- liftIO $ SDL.init SDL.initFlagEverything
-  when (e /= 0) $ liftIO getSDLErrorString >>= throwError
+  e <- liftIO $ MySDL.init [MySDL.InitEverything]
+  case e of
+    Nothing -> return ()
+    Just err -> throwError err
 
 -- | Shut down display system.
 quitDisplay :: IO ()
