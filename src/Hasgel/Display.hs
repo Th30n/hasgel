@@ -29,7 +29,7 @@ data Display a b = Display {
 -- | Initialize display system.
 -- Returns error string if failed.
 initDisplay :: ExceptT String IO ()
-initDisplay = ExceptT $ MySDL.init [MySDL.InitEverything]
+initDisplay = ExceptT $ MySDL.init [MySDL.InitVideo]
 
 -- | Shut down display system.
 quitDisplay :: IO ()

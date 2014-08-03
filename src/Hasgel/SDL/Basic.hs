@@ -3,11 +3,12 @@
 module Hasgel.SDL.Basic (
   -- * Initialization and shutdown
   InitFlag(..),
-  init, initSubSystem, quit, quitSubSystem
+  init, initSubSystem, quit, quitSubSystem, setMainReady, wasInit
 ) where
 
-import Data.Bits ((.|.))
+import Data.Bits ((.|.), (.&.))
 import Data.List (foldl')
+import Data.Maybe (mapMaybe)
 import Data.Word (Word32)
 import Foreign.C.String (peekCString)
 import Foreign.C.Types (CInt)
@@ -47,8 +48,7 @@ initSubSystem = initWithFun SDL.initSubSystem
 
 initWithFun :: (Word32 -> IO CInt) -> [InitFlag] -> IO (Either Error ())
 initWithFun f flags = do
-  let bitFlags = createBitFlags flags
-  r <- f bitFlags
+  r <- f $ createBitFlags flags
   if r == 0 then return $ Right ()
   else do
     err <- getError
@@ -56,6 +56,25 @@ initWithFun f flags = do
 
 createBitFlags :: [InitFlag] -> Word32
 createBitFlags = foldl' (.|.) 0 . map marshalInitFlag
+
+-- | Plain numerical SDL flags.
+rawInitFlags :: Num a => [a]
+rawInitFlags = [SDL.initFlagTimer, SDL.initFlagAudio, SDL.initFlagVideo,
+  SDL.initFlagJoystick, SDL.initFlagHaptic, SDL.initFlagGameController,
+  SDL.initFlagEvents, SDL.initFlagEverything, SDL.initFlagNoParachute]
+
+marshalToInitFlag :: (Num a, Eq a) => a -> Maybe InitFlag
+marshalToInitFlag x
+  | x == SDL.initFlagTimer = Just InitTimer
+  | x == SDL.initFlagAudio = Just InitAudio
+  | x == SDL.initFlagVideo = Just InitVideo
+  | x == SDL.initFlagJoystick = Just InitJoystick
+  | x == SDL.initFlagHaptic = Just InitHaptic
+  | x == SDL.initFlagGameController = Just InitGameController
+  | x == SDL.initFlagEvents = Just InitEvents
+  | x == SDL.initFlagEverything = Just InitEverything
+  | x == SDL.initFlagNoParachute = Just InitNoParachute
+  | otherwise = Nothing
 
 marshalInitFlag :: Num a => InitFlag -> a
 marshalInitFlag x = case x of
@@ -82,6 +101,28 @@ quit = SDL.quit
 -- | Shut down specific SDL subsystems.
 quitSubSystem :: [InitFlag] -> IO ()
 quitSubSystem = SDL.quitSubSystem . createBitFlags
+
+-- | This function is used to avoid failure of init when not using SDL_main()
+-- as an entry point. To ensure the main() function will not be changed it
+-- is necessary to define SDL_MAIN_HANDLED before including SDL.h.
+-- I'm not really sure how this affects Haskell code. On my ArchLinux SDL
+-- works fine without calling this function or providing C defines.
+setMainReady :: IO ()
+setMainReady = SDL.setMainReady
+
+-- | Takes a list of InitFlag as a mask for querying which subsystems
+-- are initialized. Returns a list of InitFlag corresponding to initialized
+-- systems satisfying the given mask.
+-- Giving an empty list as a mask is equivalent to using InitEverything
+-- as a mask.
+wasInit :: [InitFlag] -> IO [InitFlag]
+wasInit mask = do
+  ss <- SDL.wasInit $ createBitFlags mask
+  return $ fromBitFlags ss
+
+fromBitFlags :: Word32 -> [InitFlag]
+fromBitFlags bits = mapMaybe marshalToInitFlag flags
+  where flags = filter ((`elem` rawInitFlags) . (.&. bits)) rawInitFlags
 
 getError :: IO Error
 getError = SDL.getError >>= (\e -> SDL.clearError >> peekCString e)
