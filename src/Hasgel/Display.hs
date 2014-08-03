@@ -29,16 +29,11 @@ data Display a b = Display {
 -- | Initialize display system.
 -- Returns error string if failed.
 initDisplay :: ExceptT String IO ()
-initDisplay = do
-  --SDL.setMainReady
-  e <- liftIO $ MySDL.init [MySDL.InitEverything]
-  case e of
-    Nothing -> return ()
-    Just err -> throwError err
+initDisplay = ExceptT $ MySDL.init [MySDL.InitEverything]
 
 -- | Shut down display system.
 quitDisplay :: IO ()
-quitDisplay = SDL.quit
+quitDisplay = MySDL.quit
 
 getSDLErrorString :: IO String
 getSDLErrorString = SDL.getError >>= (\e -> SDL.clearError >> peekCString e)
