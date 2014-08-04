@@ -9,12 +9,11 @@ module Hasgel.Display (
 ) where
 
 import Control.Monad.Except
-import Foreign.C.String
-import Foreign.Marshal.Alloc (free)
 import Foreign.Ptr (nullPtr)
 import qualified Graphics.UI.SDL as SDL
 
 import Hasgel.SDL.Basic as MySDL
+import Hasgel.SDL.Video as MySDL
 
 -- | Stores resources of a display, and provides functions for rendering
 -- and cleaning up.
@@ -34,7 +33,7 @@ initDisplay = ExceptT $ MySDL.init [MySDL.InitVideo]
 quitDisplay :: IO ()
 quitDisplay = MySDL.quit
 
-createWindow :: ExceptT String IO SDL.Window
+createWindow :: ExceptT String IO MySDL.Window
 createWindow = do
   v <- liftIO $ SDL.glSetAttribute SDL.glAttrContextMajorVersion 3
   when (v /= 0) $ liftIO MySDL.getError >>= throwError
@@ -46,11 +45,9 @@ createWindow = do
   prof <- liftIO $
     SDL.glSetAttribute SDL.glAttrContextProfileMask SDL.glProfileCore
   when (prof /= 0) $ liftIO MySDL.getError >>= throwError
-  t <- liftIO $ newCString "hasgel"
-  w <- liftIO $ SDL.createWindow t 0 0 800 600 SDL.windowFlagOpenGL
-  liftIO $ free t
-  when (w == nullPtr) $ liftIO MySDL.getError >>= throwError
-  return w
+  let t  = "hasgel"
+  let rect = MySDL.WindowRectangle (MySDL.Pos 0) (MySDL.Centered) 800 600
+  ExceptT $ MySDL.createWindow t rect [MySDL.WindowOpenGl]
 
 createContext :: SDL.Window -> ExceptT String IO SDL.GLContext
 createContext w = do
@@ -61,7 +58,7 @@ createContext w = do
 -- | Creates a display window with context for rendering.
 createDisplay :: ExceptT String IO (Display SDL.Window SDL.GLContext)
 createDisplay = do
-  w <- createWindow
+  w <- Hasgel.Display.createWindow
   c <- createContext w
   return Display {
     getWindow = w,

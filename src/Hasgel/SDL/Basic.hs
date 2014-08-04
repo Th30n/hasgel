@@ -42,6 +42,18 @@ instance BitFlag InitFlag where
   marshalBitFlag = marshalInitFlag
   unmarshalBitFlag = unmarshalInitFlag
 
+marshalInitFlag :: Num a => InitFlag -> a
+marshalInitFlag x = case x of
+  InitTimer -> SDL.initFlagTimer
+  InitAudio -> SDL.initFlagAudio
+  InitVideo -> SDL.initFlagVideo
+  InitJoystick -> SDL.initFlagJoystick
+  InitHaptic -> SDL.initFlagHaptic
+  InitGameController -> SDL.initFlagGameController
+  InitEvents -> SDL.initFlagEvents
+  InitEverything -> SDL.initFlagEverything
+  InitNoParachute -> SDL.initFlagNoParachute
+
 unmarshalInitFlag :: (Num a, Eq a) => a -> Maybe InitFlag
 unmarshalInitFlag x
   | x == SDL.initFlagTimer = Just InitTimer
@@ -54,18 +66,6 @@ unmarshalInitFlag x
   | x == SDL.initFlagEverything = Just InitEverything
   | x == SDL.initFlagNoParachute = Just InitNoParachute
   | otherwise = Nothing
-
-marshalInitFlag :: Num a => InitFlag -> a
-marshalInitFlag x = case x of
-  InitTimer -> SDL.initFlagTimer
-  InitAudio -> SDL.initFlagAudio
-  InitVideo -> SDL.initFlagVideo
-  InitJoystick -> SDL.initFlagJoystick
-  InitHaptic -> SDL.initFlagHaptic
-  InitGameController -> SDL.initFlagGameController
-  InitEvents -> SDL.initFlagEvents
-  InitEverything -> SDL.initFlagEverything
-  InitNoParachute -> SDL.initFlagNoParachute
 
 -- | This function is used to initialize the SDL library.
 -- It must be called before using any other SDL function.
