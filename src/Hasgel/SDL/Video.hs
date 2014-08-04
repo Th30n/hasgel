@@ -1,8 +1,11 @@
 -- | This module corresponds to SDL 2.0 Video category
 -- on official documentation wiki.
 module Hasgel.SDL.Video (
-  WindowPos(..), WindowRectangle(..), WindowFlag(..),
-  Window, createWindow
+  -- * Data types and enumerations
+  WindowPos(..), WindowRectangle(..), WindowFlag(..), Window, GLContext,
+  -- * Functions
+  createWindow, destroyWindow, glCreateContext, glDeleteContext,
+  glSwapWindow
 ) where
 
 import Control.Monad (liftM)
@@ -40,7 +43,7 @@ data WindowFlag =
   -- ^ Fullscreen window. Can be used at window creation.
   | WindowFullScreenDesktop
   -- ^ Fullscreen window at desktop resolution. Can be used at window creation.
-  | WindowOpenGl
+  | WindowOpenGL
   -- ^ Window usable with OpenGL context. This just prepares a window for use
   -- with OpenGL. Context needs to be created manually by calling
   -- glCreateContext. Can be used at window creation.
@@ -79,7 +82,7 @@ marshalWindowFlag :: Num a => WindowFlag -> a
 marshalWindowFlag x = case x of
   WindowFullscreen -> SDL.windowFlagFullscreen
   WindowFullScreenDesktop -> SDL.windowFlagFullscreenDesktop
-  WindowOpenGl -> SDL.windowFlagOpenGL
+  WindowOpenGL -> SDL.windowFlagOpenGL
   WindowShown -> SDL.windowFlagShown
   WindowHidden -> SDL.windowFlagHidden
   WindowBorderless -> SDL.windowFlagBorderless
@@ -99,6 +102,14 @@ unmarshalWindowFlag = undefined
 
 type Window = SDL.Window
 
+-- | Creates a window with specified position, dimensions and flags.
+--
+-- Flags that are can be used during creation are:
+-- 'WindowFullscreen', 'WindowFullScreenDesktop', 'WindowOpenGL',
+-- 'WindowHidden', 'WindowBorderless', 'WindowResizable', 'WindowMinimized',
+-- 'WindowMaximized', 'WindowInputGrabbed', 'WindowAllowHighDpi'.
+--
+-- On failure returns error message.
 createWindow :: 
   String -> WindowRectangle -> [WindowFlag] -> IO (Either Error Window)
 createWindow title rect flags =
@@ -109,3 +120,27 @@ createWindow title rect flags =
     w <- SDL.createWindow t x y (width rect) (height rect) bits
     if w == nullPtr then liftM Left getError
     else return $ Right w
+
+-- | This function destroys the window.
+destroyWindow :: Window -> IO ()
+destroyWindow = SDL.destroyWindow
+
+type GLContext = SDL.GLContext
+
+-- | Creates an OpenGL context for specified window and makes it current.
+-- The window needs to have been created with 'WindowOpenGL' flag.
+--
+-- Returns error message on failure.
+glCreateContext :: Window -> IO (Either Error GLContext)
+glCreateContext w = do
+  c <- SDL.glCreateContext w
+  if c == nullPtr then liftM Left getError
+  else return $ Right c
+
+-- | Deletes an OpenGL context.
+glDeleteContext :: GLContext -> IO ()
+glDeleteContext = SDL.glDeleteContext
+
+-- | This function is used for updating a window with OpenGL rendering.
+glSwapWindow :: Window -> IO ()
+glSwapWindow = SDL.glSwapWindow

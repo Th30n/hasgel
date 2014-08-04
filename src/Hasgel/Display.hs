@@ -9,7 +9,6 @@ module Hasgel.Display (
 ) where
 
 import Control.Monad.Except
-import Foreign.Ptr (nullPtr)
 import qualified Graphics.UI.SDL as SDL
 
 import Hasgel.SDL.Basic as MySDL
@@ -46,17 +45,14 @@ createWindow = do
     SDL.glSetAttribute SDL.glAttrContextProfileMask SDL.glProfileCore
   when (prof /= 0) $ liftIO MySDL.getError >>= throwError
   let t  = "hasgel"
-  let rect = MySDL.WindowRectangle (MySDL.Pos 0) (MySDL.Centered) 800 600
-  ExceptT $ MySDL.createWindow t rect [MySDL.WindowOpenGl]
+  let rect = MySDL.WindowRectangle (MySDL.Pos 0) MySDL.Centered 800 600
+  ExceptT $ MySDL.createWindow t rect [MySDL.WindowOpenGL]
 
-createContext :: SDL.Window -> ExceptT String IO SDL.GLContext
-createContext w = do
-  c <- liftIO $ SDL.glCreateContext w
-  when (c == nullPtr) $ liftIO MySDL.getError >>= throwError
-  return c
+createContext :: MySDL.Window -> ExceptT String IO MySDL.GLContext
+createContext = ExceptT . MySDL.glCreateContext
 
 -- | Creates a display window with context for rendering.
-createDisplay :: ExceptT String IO (Display SDL.Window SDL.GLContext)
+createDisplay :: ExceptT String IO (Display MySDL.Window MySDL.GLContext)
 createDisplay = do
   w <- Hasgel.Display.createWindow
   c <- createContext w
@@ -65,9 +61,9 @@ createDisplay = do
     getContext = c,
     renderDisplay = \renderAction -> do
       renderAction
-      SDL.glSwapWindow w,
+      MySDL.glSwapWindow w,
     destroyDisplay = do
-      SDL.glDeleteContext c
-      SDL.destroyWindow w
+      MySDL.glDeleteContext c
+      MySDL.destroyWindow w
       
   }
