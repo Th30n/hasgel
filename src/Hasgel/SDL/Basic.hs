@@ -3,19 +3,23 @@
 module Hasgel.SDL.Basic (
   -- * Initialization and shutdown
   InitFlag(..),
-  init, initSubSystem, quit, quitSubSystem, setMainReady, wasInit
+  init, initSubSystem, quit, quitSubSystem, setMainReady, wasInit,
+  -- * Error handling
+  Error, clearError, getError
 ) where
 
-import Data.Bits ((.|.), (.&.))
-import Data.List (foldl')
-import Data.Maybe (mapMaybe)
-import Data.Word (Word32)
+import Data.Bits (Bits)
+-- import Data.List (foldl')
+-- import Data.Maybe (mapMaybe)
+-- import Data.Word (Word32)
 import Foreign.C.String (peekCString)
 import Foreign.C.Types (CInt)
 import Prelude hiding (init)
 
 import qualified Graphics.UI.SDL.Basic as SDL
 import qualified Graphics.UI.SDL.Enum as SDL
+
+import Hasgel.SDL.BitFlag
 
 -- | Error message received from SDL library.
 type Error = String
@@ -32,39 +36,14 @@ data InitFlag =
   | InitEvents -- ^ Events subsystem.
   | InitEverything -- ^ Initalizes all of the above subsystems.
   | InitNoParachute -- ^ Compatibility flag, it is ignored.
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Bounded, Enum)
 
--- | This function is used to initialize the SDL library.
--- It must be called before using any other SDL function.
--- On failure returns Error message otherwise ().
--- If you want to initialize subsystems separately pass an empty InitFlag list
--- and use initSubSystem.
-init :: [InitFlag] -> IO (Either Error ())
-init = initWithFun SDL.init
+instance BitFlag InitFlag where
+  marshalBitFlag = marshalInitFlag
+  unmarshalBitFlag = unmarshalInitFlag
 
--- | This function is used to initialize specific SDL subsystems.
-initSubSystem :: [InitFlag] -> IO (Either Error ())
-initSubSystem = initWithFun SDL.initSubSystem
-
-initWithFun :: (Word32 -> IO CInt) -> [InitFlag] -> IO (Either Error ())
-initWithFun f flags = do
-  r <- f $ createBitFlags flags
-  if r == 0 then return $ Right ()
-  else do
-    err <- getError
-    return . Left $ "SDL initialization error (" ++ show r ++"): " ++ err
-
-createBitFlags :: [InitFlag] -> Word32
-createBitFlags = foldl' (.|.) 0 . map marshalInitFlag
-
--- | Plain numerical SDL flags.
-rawInitFlags :: Num a => [a]
-rawInitFlags = [SDL.initFlagTimer, SDL.initFlagAudio, SDL.initFlagVideo,
-  SDL.initFlagJoystick, SDL.initFlagHaptic, SDL.initFlagGameController,
-  SDL.initFlagEvents, SDL.initFlagEverything, SDL.initFlagNoParachute]
-
-marshalToInitFlag :: (Num a, Eq a) => a -> Maybe InitFlag
-marshalToInitFlag x
+unmarshalInitFlag :: (Num a, Eq a) => a -> Maybe InitFlag
+unmarshalInitFlag x
   | x == SDL.initFlagTimer = Just InitTimer
   | x == SDL.initFlagAudio = Just InitAudio
   | x == SDL.initFlagVideo = Just InitVideo
@@ -87,6 +66,27 @@ marshalInitFlag x = case x of
   InitEvents -> SDL.initFlagEvents
   InitEverything -> SDL.initFlagEverything
   InitNoParachute -> SDL.initFlagNoParachute
+
+-- | This function is used to initialize the SDL library.
+-- It must be called before using any other SDL function.
+-- On failure returns Error message otherwise ().
+-- If you want to initialize subsystems separately pass an empty InitFlag list
+-- and use initSubSystem.
+init :: [InitFlag] -> IO (Either Error ())
+init = initWithFun SDL.init
+
+-- | This function is used to initialize specific SDL subsystems.
+initSubSystem :: [InitFlag] -> IO (Either Error ())
+initSubSystem = initWithFun SDL.initSubSystem
+
+initWithFun :: (Num a, Bits a) =>
+    (a -> IO CInt) -> [InitFlag] -> IO (Either Error ())
+initWithFun f flags = do
+  r <- f $ createBitFlags flags
+  if r == 0 then return $ Right ()
+  else do
+    err <- getError
+    return . Left $ "SDL initialization error (" ++ show r ++"): " ++ err
 
 -- | Cleans up all initialized subsystems.
 -- It should be called upon all exit conditions even if you have
@@ -120,9 +120,18 @@ wasInit mask = do
   ss <- SDL.wasInit $ createBitFlags mask
   return $ fromBitFlags ss
 
-fromBitFlags :: Word32 -> [InitFlag]
-fromBitFlags bits = mapMaybe marshalToInitFlag flags
-  where flags = filter ((`elem` rawInitFlags) . (.&. bits)) rawInitFlags
+-- fromBitFlags :: Word32 -> [InitFlag]
+-- fromBitFlags bits = mapMaybe unmarshalInitFlag flags
+--   where flags = filter ((`elem` rawInitFlags) . (.&. bits)) rawInitFlags
 
+-- | Returns the error message of last error or empty string if no error.
+-- The error message is then cleared from SDL.
+-- This message might not be necessary if every call of SDL functions
+-- from here will return Left Error upon error.
 getError :: IO Error
 getError = SDL.getError >>= (\e -> SDL.clearError >> peekCString e)
+
+-- | Clears any previous error message.
+-- I don't think this is necessary since getError cleans up after.
+clearError :: IO ()
+clearError = SDL.clearError

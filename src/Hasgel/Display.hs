@@ -6,7 +6,6 @@ module Hasgel.Display (
   renderDisplay,
   destroyDisplay,
   createDisplay,
-  getSDLErrorString
 ) where
 
 import Control.Monad.Except
@@ -35,31 +34,28 @@ initDisplay = ExceptT $ MySDL.init [MySDL.InitVideo]
 quitDisplay :: IO ()
 quitDisplay = MySDL.quit
 
-getSDLErrorString :: IO String
-getSDLErrorString = SDL.getError >>= (\e -> SDL.clearError >> peekCString e)
-
 createWindow :: ExceptT String IO SDL.Window
 createWindow = do
   v <- liftIO $ SDL.glSetAttribute SDL.glAttrContextMajorVersion 3
-  when (v /= 0) $ liftIO getSDLErrorString >>= throwError
+  when (v /= 0) $ liftIO MySDL.getError >>= throwError
   v' <- liftIO $ SDL.glSetAttribute SDL.glAttrContextMinorVersion 3
-  when (v' /= 0) $ liftIO getSDLErrorString >>= throwError
+  when (v' /= 0) $ liftIO MySDL.getError >>= throwError
   cfs <- liftIO $
     SDL.glSetAttribute SDL.glAttrContextFlags SDL.glContextFlagForwardCompatible
-  when (cfs /= 0) $ liftIO getSDLErrorString >>= throwError
+  when (cfs /= 0) $ liftIO MySDL.getError >>= throwError
   prof <- liftIO $
     SDL.glSetAttribute SDL.glAttrContextProfileMask SDL.glProfileCore
-  when (prof /= 0) $ liftIO getSDLErrorString >>= throwError
+  when (prof /= 0) $ liftIO MySDL.getError >>= throwError
   t <- liftIO $ newCString "hasgel"
   w <- liftIO $ SDL.createWindow t 0 0 800 600 SDL.windowFlagOpenGL
   liftIO $ free t
-  when (w == nullPtr) $ liftIO getSDLErrorString >>= throwError
+  when (w == nullPtr) $ liftIO MySDL.getError >>= throwError
   return w
 
 createContext :: SDL.Window -> ExceptT String IO SDL.GLContext
 createContext w = do
   c <- liftIO $ SDL.glCreateContext w
-  when (c == nullPtr) $ liftIO getSDLErrorString >>= throwError
+  when (c == nullPtr) $ liftIO MySDL.getError >>= throwError
   return c
 
 -- | Creates a display window with context for rendering.
