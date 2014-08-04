@@ -120,10 +120,6 @@ wasInit mask = do
   ss <- SDL.wasInit $ createBitFlags mask
   return $ fromBitFlags ss
 
--- fromBitFlags :: Word32 -> [InitFlag]
--- fromBitFlags bits = mapMaybe unmarshalInitFlag flags
---   where flags = filter ((`elem` rawInitFlags) . (.&. bits)) rawInitFlags
-
 -- | Returns the error message of last error or empty string if no error.
 -- The error message is then cleared from SDL.
 -- This message might not be necessary if every call of SDL functions
