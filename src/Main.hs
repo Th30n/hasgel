@@ -1,6 +1,7 @@
 module Main ( main ) where
 
 import Control.Monad.Except
+import Control.Exception (bracket)
 import Data.Word (Word32)
 import qualified Graphics.Rendering.OpenGL as GL
 import Graphics.Rendering.OpenGL (($=))
@@ -11,20 +12,17 @@ import Hasgel.Display
 import Hasgel.SDL.Events as MySDL
 
 main :: IO ()
-main = do
-  e <- runExceptT initDisplay
-  case e of
-    Right () -> do
-      dr <- runExceptT createDisplay
-      case dr of
-        Right d -> do
-          current <- SDL.getTicks
-          loop World { loopState = Continue, display = d,
-              currentTime = current }
-          destroyDisplay d
-        Left err -> putStrLn err
-    Left err -> putStrLn err
-  quitDisplay
+main =
+  withInit $
+    either putStrLn (\d -> do
+        current <- SDL.getTicks
+        loop World { loopState = Continue, display = d,
+            currentTime = current }
+        destroyDisplay d) =<< runExceptT createDisplay
+
+withInit :: IO () -> IO ()
+withInit action = bracket (runExceptT initDisplay) (const quitDisplay) $
+  either putStrLn (const action)
 
 data LoopState = Continue | Quit
 
