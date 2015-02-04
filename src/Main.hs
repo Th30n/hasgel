@@ -13,16 +13,17 @@ import Hasgel.SDL.Events as MySDL
 
 main :: IO ()
 main =
-  withInit $
+  withInit $ runExceptT createDisplay >>=
     either putStrLn (\d -> do
-        current <- SDL.getTicks
-        loop World { loopState = Continue, display = d,
-            currentTime = current }
-        destroyDisplay d) =<< runExceptT createDisplay
+      current <- SDL.getTicks
+      loop World { loopState = Continue, display = d,
+                   currentTime = current }
+      destroyDisplay d)
 
 withInit :: IO () -> IO ()
-withInit action = bracket (runExceptT initDisplay) (const quitDisplay) $
-  either putStrLn (const action)
+withInit action =
+  bracket (runExceptT initDisplay) (const quitDisplay) $
+    either putStrLn (const action)
 
 data LoopState = Continue | Quit
 
@@ -36,7 +37,7 @@ loop :: WorldState a b -> IO ()
 loop curw = case loopState curw of
   Continue -> do
     event <- MySDL.pollEvent
-    let w = handleEvents event curw
+    let w = maybe curw (handleEvent curw) event
     renderDisplay (display w) $ do
       let current = (fromIntegral (currentTime w) / 1000) :: GL.GLclampf
       let r = 0.5 + 0.5 * sin current
@@ -47,8 +48,6 @@ loop curw = case loopState curw of
     loop w { currentTime = current}
   Quit -> return ()
 
-handleEvents :: Maybe MySDL.Event -> WorldState a b -> WorldState a b
-handleEvents Nothing w = w
-handleEvents (Just e) w = case e of
-    MySDL.QuitEvent _ _ -> w { loopState = Quit }
-    _ -> w
+handleEvent :: WorldState a b -> MySDL.Event -> WorldState a b
+handleEvent w (MySDL.QuitEvent _ _) = w { loopState = Quit }
+handleEvent w _ = w
