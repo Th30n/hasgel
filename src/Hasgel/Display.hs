@@ -33,6 +33,7 @@ initDisplay = MySDL.init [MySDL.InitVideo]
 quitDisplay :: IO ()
 quitDisplay = MySDL.quit
 
+-- | Create window with OpenGl context.
 createWindow :: Script MySDL.Window
 createWindow = do
   v <- scriptIO $ SDL.glSetAttribute SDL.glAttrContextMajorVersion 3
@@ -45,7 +46,7 @@ createWindow = do
   prof <- scriptIO $
     SDL.glSetAttribute SDL.glAttrContextProfileMask SDL.glProfileCore
   when (prof /= 0) $ scriptIO MySDL.getError >>= throwT
-  let t  = "hasgel"
+  let t = "hasgel"
   let rect = MySDL.WindowRectangle (MySDL.Pos 0) MySDL.Centered 800 600
   MySDL.createWindow t rect [MySDL.WindowOpenGL]
 
@@ -66,5 +67,4 @@ createDisplay = do
     destroyDisplay = do
       MySDL.glDeleteContext c
       MySDL.destroyWindow w
-      
   }
