@@ -29,4 +29,3 @@ pollEvent = alloca $ \e -> do
   else do
     event <- peek e
     return $ Just event
-  

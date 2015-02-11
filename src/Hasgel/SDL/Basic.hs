@@ -10,9 +10,7 @@ module Hasgel.SDL.Basic (
 
 import Data.Bits (Bits)
 import Control.Error
--- import Data.List (foldl')
--- import Data.Maybe (mapMaybe)
--- import Data.Word (Word32)
+import Control.Monad (unless)
 import Foreign.C.String (peekCString)
 import Foreign.C.Types (CInt)
 import Prelude hiding (init)
@@ -77,12 +75,10 @@ init = initWithFun SDL.init
 initSubSystem :: [InitFlag] -> Script ()
 initSubSystem = initWithFun SDL.initSubSystem
 
-initWithFun :: (Num a, Bits a) =>
-    (a -> IO CInt) -> [InitFlag] -> Script ()
+initWithFun :: (Num a, Bits a) => (a -> IO CInt) -> [InitFlag] -> Script ()
 initWithFun f flags = do
   r <- scriptIO . f $ createBitFlags flags
-  if r == 0 then return ()
-  else do
+  unless (r == 0) $ do
     errMsg <- scriptIO getError
     throwT $ "SDL initialization error (" ++ show r ++"): " ++ errMsg
 

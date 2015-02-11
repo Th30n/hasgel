@@ -9,10 +9,9 @@ module Hasgel.SDL.Video (
 ) where
 
 import Control.Error
-import Control.Exception (bracket)
-import Foreign.C.String (newCString)
+import Control.Monad (when)
+import Foreign.C.String (withCString)
 import Foreign.C.Types (CInt)
-import Foreign.Marshal.Alloc (free)
 import Foreign.Ptr (nullPtr)
 
 import qualified Graphics.UI.SDL as SDL
@@ -69,7 +68,7 @@ data WindowFlag =
   | WindowAllowHighDpi
   -- ^ Window should be created in high-DPI mode if supported. (>= SDL 2.0.1)
   -- Can be used at window creation.
-  
+
   -- WindowMouseCapture
   -- Window has mouse captured (unrelated to InputGrabbed, >= SDL 2.0.4)
   deriving (Show, Eq, Ord, Bounded, Enum)
@@ -110,13 +109,12 @@ type Window = SDL.Window
 -- 'WindowMaximized', 'WindowInputGrabbed', 'WindowAllowHighDpi'.
 --
 -- On failure returns error message.
-createWindow :: 
-  String -> WindowRectangle -> [WindowFlag] -> Script Window
+createWindow :: String -> WindowRectangle -> [WindowFlag] -> Script Window
 createWindow title rect flags = do
-  w <- scriptIO tryCreateWindow
-  if w == nullPtr then scriptIO getError >>= throwT
-  else return w
-  where tryCreateWindow = bracket (newCString title) free $ \t -> do
+  w <- scriptIO createWindow'
+  when (w == nullPtr) $ scriptIO getError >>= throwT
+  return w
+  where createWindow' = withCString title $ \t -> do
           let x = marshalWindowPos $ posX rect
           let y = marshalWindowPos $ posY rect
           let bits = createBitFlags flags
@@ -135,8 +133,8 @@ type GLContext = SDL.GLContext
 glCreateContext :: Window -> Script GLContext
 glCreateContext w = do
   c <- scriptIO $ SDL.glCreateContext w
-  if c == nullPtr then scriptIO getError >>= throwT
-  else return c
+  when (c == nullPtr) $ scriptIO getError >>= throwT
+  return c
 
 -- | Deletes an OpenGL context.
 glDeleteContext :: GLContext -> IO ()

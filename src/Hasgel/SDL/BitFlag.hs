@@ -3,7 +3,7 @@ module Hasgel.SDL.BitFlag (
   BitFlag(..)
 ) where
 
-import Data.Bits (Bits, (.|.), (.&.))
+import Data.Bits (Bits, (.&.), (.|.))
 import Data.List (foldl')
 import Data.Maybe (mapMaybe)
 
@@ -19,9 +19,9 @@ class (Bounded f, Enum f) => BitFlag f where
   createBitFlags = foldl' (.|.) 0 . map marshalBitFlag
   -- | Converts 32bit representation of flags back to list of BitFlag.
   fromBitFlags :: (Num a, Bits a, BitFlag f) => a -> [f]
-  fromBitFlags = fromBitBitFlags' [minBound..]
+  fromBitFlags = fromBitFlags' [minBound..]
 
-fromBitBitFlags' :: (Num a, Bits a, BitFlag f) => [f] -> a -> [f]
-fromBitBitFlags' allBitFlags bits = mapMaybe unmarshalBitFlag flags
+fromBitFlags' :: (Num a, Bits a, BitFlag f) => [f] -> a -> [f]
+fromBitFlags' allBitFlags bits = mapMaybe unmarshalBitFlag flags
   where flags = filter ((`elem` rawBitFlags) . (.&. bits)) rawBitFlags
         rawBitFlags = map marshalBitFlag allBitFlags
