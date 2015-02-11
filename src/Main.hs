@@ -1,7 +1,7 @@
 module Main ( main ) where
 
-import Control.Exception (bracket)
 import Control.Error
+import Control.Exception (bracket_)
 import Data.Word (Word32)
 import Graphics.Rendering.OpenGL (($=))
 import qualified Graphics.Rendering.OpenGL as GL
@@ -23,8 +23,7 @@ main =
 -- | Initializes SDL, performs the action and quits SDL.
 -- | Cleanup is performed also in case of an exception.
 withInit :: IO a -> IO a
-withInit action =
-  bracket (runScript initDisplay) (const quitDisplay) $ const action
+withInit = bracket_ (runScript initDisplay) quitDisplay
 
 data LoopState = Continue | Quit
 
