@@ -1,10 +1,10 @@
 module Main ( main ) where
 
-import Control.Monad.Except
 import Control.Exception (bracket)
+import Control.Error
 import Data.Word (Word32)
-import qualified Graphics.Rendering.OpenGL as GL
 import Graphics.Rendering.OpenGL (($=))
+import qualified Graphics.Rendering.OpenGL as GL
 import Graphics.UI.SDL as SDL
 import Prelude
 
@@ -13,17 +13,18 @@ import Hasgel.SDL.Events as MySDL
 
 main :: IO ()
 main =
-  withInit $ runExceptT createDisplay >>=
-    either putStrLn (\d -> do
+  withInit $ runScript createDisplay >>=
+    (\d -> do
       current <- SDL.getTicks
       loop World { loopState = Continue, display = d,
                    currentTime = current }
       destroyDisplay d)
 
-withInit :: IO () -> IO ()
+-- | Initializes SDL, performs the action and quits SDL.
+-- | Cleanup is performed also in case of an exception.
+withInit :: IO a -> IO a
 withInit action =
-  bracket (runExceptT initDisplay) (const quitDisplay) $
-    either putStrLn (const action)
+  bracket (runScript initDisplay) (const quitDisplay) $ const action
 
 data LoopState = Continue | Quit
 

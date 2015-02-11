@@ -8,7 +8,7 @@ module Hasgel.SDL.Video (
   glSwapWindow
 ) where
 
-import Control.Monad (liftM)
+import Control.Error
 import Control.Exception (bracket)
 import Foreign.C.String (newCString)
 import Foreign.C.Types (CInt)
@@ -111,15 +111,16 @@ type Window = SDL.Window
 --
 -- On failure returns error message.
 createWindow :: 
-  String -> WindowRectangle -> [WindowFlag] -> IO (Either Error Window)
-createWindow title rect flags =
-  bracket (newCString title) free $ \t -> do
-    let x = marshalWindowPos $ posX rect
-    let y = marshalWindowPos $ posY rect
-    let bits = createBitFlags flags
-    w <- SDL.createWindow t x y (width rect) (height rect) bits
-    if w == nullPtr then liftM Left getError
-    else return $ Right w
+  String -> WindowRectangle -> [WindowFlag] -> Script Window
+createWindow title rect flags = do
+  w <- scriptIO tryCreateWindow
+  if w == nullPtr then scriptIO getError >>= throwT
+  else return w
+  where tryCreateWindow = bracket (newCString title) free $ \t -> do
+          let x = marshalWindowPos $ posX rect
+          let y = marshalWindowPos $ posY rect
+          let bits = createBitFlags flags
+          SDL.createWindow t x y (width rect) (height rect) bits
 
 -- | This function destroys the window.
 destroyWindow :: Window -> IO ()
@@ -131,11 +132,11 @@ type GLContext = SDL.GLContext
 -- The window needs to have been created with 'WindowOpenGL' flag.
 --
 -- Returns error message on failure.
-glCreateContext :: Window -> IO (Either Error GLContext)
+glCreateContext :: Window -> Script GLContext
 glCreateContext w = do
-  c <- SDL.glCreateContext w
-  if c == nullPtr then liftM Left getError
-  else return $ Right c
+  c <- scriptIO $ SDL.glCreateContext w
+  if c == nullPtr then scriptIO getError >>= throwT
+  else return c
 
 -- | Deletes an OpenGL context.
 glDeleteContext :: GLContext -> IO ()

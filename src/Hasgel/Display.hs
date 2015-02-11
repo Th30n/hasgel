@@ -8,7 +8,8 @@ module Hasgel.Display (
   createDisplay,
 ) where
 
-import Control.Monad.Except
+import Control.Error
+import Control.Monad (when)
 import qualified Graphics.UI.SDL as SDL
 
 import Hasgel.SDL.Basic as MySDL
@@ -24,35 +25,35 @@ data Display a b = Display {
 }
 
 -- | Initialize display system.
--- Returns error string if failed.
-initDisplay :: ExceptT String IO ()
-initDisplay = ExceptT $ MySDL.init [MySDL.InitVideo]
+-- | Returns error string if failed.
+initDisplay :: Script ()
+initDisplay = MySDL.init [MySDL.InitVideo]
 
 -- | Shut down display system.
 quitDisplay :: IO ()
 quitDisplay = MySDL.quit
 
-createWindow :: ExceptT String IO MySDL.Window
+createWindow :: Script MySDL.Window
 createWindow = do
-  v <- liftIO $ SDL.glSetAttribute SDL.glAttrContextMajorVersion 3
-  when (v /= 0) $ liftIO MySDL.getError >>= throwError
-  v' <- liftIO $ SDL.glSetAttribute SDL.glAttrContextMinorVersion 3
-  when (v' /= 0) $ liftIO MySDL.getError >>= throwError
-  cfs <- liftIO $
+  v <- scriptIO $ SDL.glSetAttribute SDL.glAttrContextMajorVersion 3
+  when (v /= 0) $ scriptIO MySDL.getError >>= throwT
+  v' <- scriptIO $ SDL.glSetAttribute SDL.glAttrContextMinorVersion 3
+  when (v' /= 0) $ scriptIO MySDL.getError >>= throwT
+  cfs <- scriptIO $
     SDL.glSetAttribute SDL.glAttrContextFlags SDL.glContextFlagForwardCompatible
-  when (cfs /= 0) $ liftIO MySDL.getError >>= throwError
-  prof <- liftIO $
+  when (cfs /= 0) $ scriptIO MySDL.getError >>= throwT
+  prof <- scriptIO $
     SDL.glSetAttribute SDL.glAttrContextProfileMask SDL.glProfileCore
-  when (prof /= 0) $ liftIO MySDL.getError >>= throwError
+  when (prof /= 0) $ scriptIO MySDL.getError >>= throwT
   let t  = "hasgel"
   let rect = MySDL.WindowRectangle (MySDL.Pos 0) MySDL.Centered 800 600
-  ExceptT $ MySDL.createWindow t rect [MySDL.WindowOpenGL]
+  MySDL.createWindow t rect [MySDL.WindowOpenGL]
 
-createContext :: MySDL.Window -> ExceptT String IO MySDL.GLContext
-createContext = ExceptT . MySDL.glCreateContext
+createContext :: MySDL.Window -> Script MySDL.GLContext
+createContext = MySDL.glCreateContext
 
 -- | Creates a display window with context for rendering.
-createDisplay :: ExceptT String IO (Display MySDL.Window MySDL.GLContext)
+createDisplay :: Script (Display MySDL.Window MySDL.GLContext)
 createDisplay = do
   w <- Hasgel.Display.createWindow
   c <- createContext w

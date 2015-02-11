@@ -5,10 +5,11 @@ module Hasgel.SDL.Basic (
   InitFlag(..),
   init, initSubSystem, quit, quitSubSystem, setMainReady, wasInit,
   -- * Error handling
-  Error, clearError, getError
+  clearError, getError
 ) where
 
 import Data.Bits (Bits)
+import Control.Error
 -- import Data.List (foldl')
 -- import Data.Maybe (mapMaybe)
 -- import Data.Word (Word32)
@@ -20,9 +21,6 @@ import qualified Graphics.UI.SDL.Basic as SDL
 import qualified Graphics.UI.SDL.Enum as SDL
 
 import Hasgel.SDL.BitFlag
-
--- | Error message received from SDL library.
-type Error = String
 
 -- | Set of flags for initializing subsystems.
 -- Event handling, File and Threading subsystems are initialized by default.
@@ -72,21 +70,21 @@ unmarshalInitFlag x
 -- On failure returns Error message otherwise ().
 -- If you want to initialize subsystems separately pass an empty InitFlag list
 -- and use initSubSystem.
-init :: [InitFlag] -> IO (Either Error ())
+init :: [InitFlag] -> Script ()
 init = initWithFun SDL.init
 
 -- | This function is used to initialize specific SDL subsystems.
-initSubSystem :: [InitFlag] -> IO (Either Error ())
+initSubSystem :: [InitFlag] -> Script ()
 initSubSystem = initWithFun SDL.initSubSystem
 
 initWithFun :: (Num a, Bits a) =>
-    (a -> IO CInt) -> [InitFlag] -> IO (Either Error ())
+    (a -> IO CInt) -> [InitFlag] -> Script ()
 initWithFun f flags = do
-  r <- f $ createBitFlags flags
-  if r == 0 then return $ Right ()
+  r <- scriptIO . f $ createBitFlags flags
+  if r == 0 then return ()
   else do
-    err <- getError
-    return . Left $ "SDL initialization error (" ++ show r ++"): " ++ err
+    errMsg <- scriptIO getError
+    throwT $ "SDL initialization error (" ++ show r ++"): " ++ errMsg
 
 -- | Cleans up all initialized subsystems.
 -- It should be called upon all exit conditions even if you have
@@ -121,11 +119,11 @@ wasInit mask = do
   return $ fromBitFlags ss
 
 -- | Returns the error message of last error or empty string if no error.
--- The error message is then cleared from SDL.
--- This message might not be necessary if every call of SDL functions
--- from here will return Left Error upon error.
-getError :: IO Error
-getError = SDL.getError >>= (\e -> SDL.clearError >> peekCString e)
+-- | The error message is then cleared from SDL.
+-- | This message might not be necessary if every call of SDL functions
+-- | from here will return Left Error upon error.
+getError :: IO String
+getError = SDL.getError >>= (\e -> clearError >> peekCString e)
 
 -- | Clears any previous error message.
 -- I don't think this is necessary since getError cleans up after.
