@@ -9,8 +9,6 @@ module Hasgel.Display (
 ) where
 
 import Control.Error
-import Control.Monad (when)
-import qualified Graphics.UI.SDL as SDL
 
 import Hasgel.SDL.Basic as MySDL
 import Hasgel.SDL.Video as MySDL
@@ -36,16 +34,9 @@ quitDisplay = MySDL.quit
 -- | Create window with OpenGl context.
 createWindow :: Script MySDL.Window
 createWindow = do
-  v <- scriptIO $ SDL.glSetAttribute SDL.glAttrContextMajorVersion 3
-  when (v /= 0) $ scriptIO MySDL.getError >>= throwT
-  v' <- scriptIO $ SDL.glSetAttribute SDL.glAttrContextMinorVersion 3
-  when (v' /= 0) $ scriptIO MySDL.getError >>= throwT
-  cfs <- scriptIO $
-    SDL.glSetAttribute SDL.glAttrContextFlags SDL.glContextFlagForwardCompatible
-  when (cfs /= 0) $ scriptIO MySDL.getError >>= throwT
-  prof <- scriptIO $
-    SDL.glSetAttribute SDL.glAttrContextProfileMask SDL.glProfileCore
-  when (prof /= 0) $ scriptIO MySDL.getError >>= throwT
+  MySDL.glSetContextVersion 3 3
+  MySDL.glSetContextFlags [MySDL.GLForwardCompatible]
+  MySDL.glSetContextProfile MySDL.GLCore
   let t = "hasgel"
   let rect = MySDL.WindowRectangle (MySDL.Pos 0) MySDL.Centered 800 600
   MySDL.createWindow t rect [MySDL.WindowOpenGL]

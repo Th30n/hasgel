@@ -8,7 +8,7 @@ module Hasgel.SDL.Basic (
   clearError, getError
 ) where
 
-import Data.Bits (Bits)
+import Data.Word (Word32)
 import Control.Error
 import Control.Monad (unless)
 import Foreign.C.String (peekCString)
@@ -35,32 +35,32 @@ data InitFlag =
   deriving (Show, Eq, Ord, Bounded, Enum)
 
 instance BitFlag InitFlag where
-  marshalBitFlag = marshalInitFlag
+  marshalBitFlag = fromIntegral . marshalInitFlag
   unmarshalBitFlag = unmarshalInitFlag
 
-marshalInitFlag :: Num a => InitFlag -> a
+marshalInitFlag :: InitFlag -> Word32
 marshalInitFlag x = case x of
-  InitTimer -> SDL.initFlagTimer
-  InitAudio -> SDL.initFlagAudio
-  InitVideo -> SDL.initFlagVideo
-  InitJoystick -> SDL.initFlagJoystick
-  InitHaptic -> SDL.initFlagHaptic
-  InitGameController -> SDL.initFlagGameController
-  InitEvents -> SDL.initFlagEvents
-  InitEverything -> SDL.initFlagEverything
-  InitNoParachute -> SDL.initFlagNoParachute
+  InitTimer -> SDL.SDL_INIT_TIMER
+  InitAudio -> SDL.SDL_INIT_AUDIO
+  InitVideo -> SDL.SDL_INIT_VIDEO
+  InitJoystick -> SDL.SDL_INIT_JOYSTICK
+  InitHaptic -> SDL.SDL_INIT_HAPTIC
+  InitGameController -> SDL.SDL_INIT_GAMECONTROLLER
+  InitEvents -> SDL.SDL_INIT_EVENTS
+  InitEverything -> SDL.SDL_INIT_EVERYTHING
+  InitNoParachute -> SDL.SDL_INIT_NOPARACHUTE
 
 unmarshalInitFlag :: (Num a, Eq a) => a -> Maybe InitFlag
 unmarshalInitFlag x
-  | x == SDL.initFlagTimer = Just InitTimer
-  | x == SDL.initFlagAudio = Just InitAudio
-  | x == SDL.initFlagVideo = Just InitVideo
-  | x == SDL.initFlagJoystick = Just InitJoystick
-  | x == SDL.initFlagHaptic = Just InitHaptic
-  | x == SDL.initFlagGameController = Just InitGameController
-  | x == SDL.initFlagEvents = Just InitEvents
-  | x == SDL.initFlagEverything = Just InitEverything
-  | x == SDL.initFlagNoParachute = Just InitNoParachute
+  | x == fromIntegral SDL.SDL_INIT_TIMER = Just InitTimer
+  | x == fromIntegral SDL.SDL_INIT_AUDIO = Just InitAudio
+  | x == fromIntegral SDL.SDL_INIT_VIDEO = Just InitVideo
+  | x == fromIntegral SDL.SDL_INIT_JOYSTICK = Just InitJoystick
+  | x == fromIntegral SDL.SDL_INIT_HAPTIC = Just InitHaptic
+  | x == fromIntegral SDL.SDL_INIT_GAMECONTROLLER = Just InitGameController
+  | x == fromIntegral SDL.SDL_INIT_EVENTS = Just InitEvents
+  | x == fromIntegral SDL.SDL_INIT_EVERYTHING = Just InitEverything
+  | x == fromIntegral SDL.SDL_INIT_NOPARACHUTE = Just InitNoParachute
   | otherwise = Nothing
 
 -- | This function is used to initialize the SDL library.
@@ -75,7 +75,7 @@ init = initWithFun SDL.init
 initSubSystem :: [InitFlag] -> Script ()
 initSubSystem = initWithFun SDL.initSubSystem
 
-initWithFun :: (Num a, Bits a) => (a -> IO CInt) -> [InitFlag] -> Script ()
+initWithFun :: (SDL.InitFlag -> IO CInt) -> [InitFlag] -> Script ()
 initWithFun f flags = do
   r <- scriptIO . f $ createBitFlags flags
   unless (r == 0) $ do

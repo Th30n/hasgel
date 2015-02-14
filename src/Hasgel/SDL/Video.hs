@@ -2,9 +2,11 @@
 -- on official documentation wiki.
 module Hasgel.SDL.Video (
   -- * Data types and enumerations
-  WindowPos(..), WindowRectangle(..), WindowFlag(..), Window, GLContext,
+  WindowPos(..), WindowRectangle(..), WindowFlag(..), Window,
+  GLContext, GLContextFlag(..), GLContextProfile(..),
   -- * Functions
   createWindow, destroyWindow, glCreateContext, glDeleteContext,
+  glSetContextVersion, glSetContextFlags, glSetContextProfile,
   glSwapWindow
 ) where
 
@@ -22,11 +24,11 @@ import Hasgel.SDL.BitFlag
 -- | Defines x or y position of a window.
 data WindowPos = Pos CInt | Centered | Undefined deriving (Show)
 
-marshalWindowPos :: Num a => WindowPos -> a
+marshalWindowPos :: (Num a, Eq a) => WindowPos -> a
 marshalWindowPos x = case x of
   Pos n -> fromIntegral n
-  Centered -> SDL.windowPosCentered
-  Undefined -> SDL.windowPosUndefined
+  Centered -> SDL.SDL_WINDOWPOS_CENTERED
+  Undefined -> SDL.SDL_WINDOWPOS_UNDEFINED
 
 -- | Defines complete rectangle for the window.
 data WindowRectangle = WindowRectangle {
@@ -77,22 +79,22 @@ instance BitFlag WindowFlag where
   marshalBitFlag = marshalWindowFlag
   unmarshalBitFlag = unmarshalWindowFlag
 
-marshalWindowFlag :: Num a => WindowFlag -> a
+marshalWindowFlag :: (Num a, Eq a) => WindowFlag -> a
 marshalWindowFlag x = case x of
-  WindowFullscreen -> SDL.windowFlagFullscreen
-  WindowFullScreenDesktop -> SDL.windowFlagFullscreenDesktop
-  WindowOpenGL -> SDL.windowFlagOpenGL
-  WindowShown -> SDL.windowFlagShown
-  WindowHidden -> SDL.windowFlagHidden
-  WindowBorderless -> SDL.windowFlagBorderless
-  WindowResizable -> SDL.windowFlagResizable
-  WindowMinimized -> SDL.windowFlagMinimized
-  WindowMaximized -> SDL.windowFlagMaximized
-  WindowInputGrabbed -> SDL.windowFlagInputGrabbed
-  WindowInputFocus -> SDL.windowFlagInputFocus
-  WindowMouseFocus -> SDL.windowFlagMouseFocus
-  WindowForeign -> SDL.windowFlagForeign
-  WindowAllowHighDpi -> SDL.windowFlagAllowHighDPI
+  WindowFullscreen -> SDL.SDL_WINDOW_FULLSCREEN
+  WindowFullScreenDesktop -> SDL.SDL_WINDOW_FULLSCREEN_DESKTOP
+  WindowOpenGL -> SDL.SDL_WINDOW_OPENGL
+  WindowShown -> SDL.SDL_WINDOW_SHOWN
+  WindowHidden -> SDL.SDL_WINDOW_HIDDEN
+  WindowBorderless -> SDL.SDL_WINDOW_BORDERLESS
+  WindowResizable -> SDL.SDL_WINDOW_RESIZABLE
+  WindowMinimized -> SDL.SDL_WINDOW_MINIMIZED
+  WindowMaximized -> SDL.SDL_WINDOW_MAXIMIZED
+  WindowInputGrabbed -> SDL.SDL_WINDOW_INPUT_GRABBED
+  WindowInputFocus -> SDL.SDL_WINDOW_INPUT_FOCUS
+  WindowMouseFocus -> SDL.SDL_WINDOW_MOUSE_FOCUS
+  WindowForeign -> SDL.SDL_WINDOW_FOREIGN
+  WindowAllowHighDpi -> SDL.SDL_WINDOW_ALLOW_HIGHDPI
   -- Not yet implemented in raw bindings.
   -- WindowMouseCapture -> SDL.windowFlagMouseCapture
 
@@ -139,6 +141,71 @@ glCreateContext w = do
 -- | Deletes an OpenGL context.
 glDeleteContext :: GLContext -> IO ()
 glDeleteContext = SDL.glDeleteContext
+
+-- | Sets the OpenGL context major and minor version.
+-- | Returns error on failure.
+glSetContextVersion :: CInt -> CInt -> Script ()
+glSetContextVersion major minor = do
+  r <- scriptIO $ SDL.glSetAttribute SDL.SDL_GL_CONTEXT_MAJOR_VERSION major
+  when (r /= 0) $ scriptIO getError >>= throwT
+  r' <- scriptIO $ SDL.glSetAttribute SDL.SDL_GL_CONTEXT_MINOR_VERSION minor
+  when (r' /= 0) $ scriptIO getError >>= throwT
+
+-- | OpenGL profiles.
+data GLContextProfile =
+  GLCore
+  -- ^ OpenGL core profile - deprecated functions are disallowed.
+  | GLCompatibility
+  -- ^ OpenGL compatibility profile - deprecated functions are allowed.
+  | GLES
+  -- ^ OpenGL ES profile - only a subset of the base OpenGL
+  -- ^ functionality is available.
+  deriving (Show)
+
+-- | Set the OpenGL context profile. Returns error on failure.
+glSetContextProfile :: GLContextProfile -> Script ()
+glSetContextProfile prof = do
+  let prof' = case prof of
+                GLCore -> SDL.SDL_GL_CONTEXT_PROFILE_CORE
+                GLCompatibility -> SDL.SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
+                GLES -> SDL.SDL_GL_CONTEXT_PROFILE_ES
+  r <- scriptIO $ SDL.glSetAttribute SDL.SDL_GL_CONTEXT_PROFILE_MASK prof'
+  when (r /= 0) $ scriptIO getError >>= throwT
+
+-- | OpenGL context flags.
+data GLContextFlag =
+  GLDebug
+  -- ^ This flag is intended to put GL into a debug mode which might offer
+  -- ^ better developer insights, possibly at a loss of performance.
+  | GLForwardCompatible
+  -- ^ Puts GL into forward compatible mode, which means no depracated
+  -- ^ functionality will be supported, possibly at a gain of performance.
+  -- ^ Applies only to GL 3.0 and later contexts.
+  | GLRobustAccess
+  -- ^ This flag is intended to require a GL context that supports the
+  -- ^ GL_ARB_robustness extension which offers a few APIs that are safer
+  -- ^ than the usual defaults.
+  | GLResetIsolation
+  -- ^ Requires the GL to make promises about what to do in the face of driver
+  -- ^ or hardware failure.
+  deriving (Show, Eq, Ord, Bounded, Enum)
+
+instance BitFlag GLContextFlag where
+  marshalBitFlag GLDebug = SDL.SDL_GL_CONTEXT_DEBUG_FLAG
+  marshalBitFlag GLForwardCompatible =
+    SDL.SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG
+  marshalBitFlag GLRobustAccess = SDL.SDL_GL_CONTEXT_ROBUST_ACCESS_FLAG
+  marshalBitFlag GLResetIsolation = SDL.SDL_GL_CONTEXT_RESET_ISOLATION_FLAG
+
+  unmarshalBitFlag =
+    error "TODO: Hasgel.SDL.Video.GLContextFlag => unmarshalBitFlag"
+
+-- | Sets OpenGL context flags. Returns error on failure.
+glSetContextFlags :: [GLContextFlag] -> Script ()
+glSetContextFlags flags = do
+  let flags' = createBitFlags flags
+  r <- scriptIO $ SDL.glSetAttribute SDL.SDL_GL_CONTEXT_FLAGS flags'
+  when (r /= 0) $ scriptIO getError >>= throwT
 
 -- | This function is used for updating a window with OpenGL rendering.
 glSwapWindow :: Window -> IO ()
