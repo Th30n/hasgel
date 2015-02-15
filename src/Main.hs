@@ -1,29 +1,24 @@
 module Main ( main ) where
 
 import Control.Error
-import Control.Exception (bracket_)
 import Data.Word (Word32)
-import Graphics.Rendering.OpenGL (($=))
-import qualified Graphics.Rendering.OpenGL as GL
+import Foreign.Marshal.Array (withArray)
+import Graphics.GL.Core45
 import Graphics.UI.SDL as SDL
 import Prelude
 
 import Hasgel.Display
+import Hasgel.SDL.Basic as MySDL
 import Hasgel.SDL.Events as MySDL
 
 main :: IO ()
 main =
-  withInit $ runScript createDisplay >>=
+  MySDL.withInit [MySDL.InitVideo] $ runScript createDisplay >>=
     (\d -> do
       current <- SDL.getTicks
       loop World { loopState = Continue, display = d,
                    currentTime = current }
       destroyDisplay d)
-
--- | Initializes SDL, performs the action and quits SDL.
--- | Cleanup is performed also in case of an exception.
-withInit :: IO a -> IO a
-withInit = bracket_ (runScript initDisplay) quitDisplay
 
 data LoopState = Continue | Quit
 
@@ -39,11 +34,11 @@ loop curw = case loopState curw of
     event <- MySDL.pollEvent
     let w = maybe curw (handleEvent curw) event
     renderDisplay (display w) $ do
-      let current = (fromIntegral (currentTime w) / 1000) :: GL.GLclampf
+      let current = fromIntegral (currentTime w) / 1000
       let r = 0.5 + 0.5 * sin current
       let g = 0.5 + 0.5 * cos current
-      GL.clearColor $= GL.Color4 r g 0.0 1.0
-      GL.clear [GL.ColorBuffer]
+      withArray [r, g, 0.0, 1.0] $ \color ->
+        glClearBufferfv GL_COLOR 0 color
     current <- SDL.getTicks
     loop w { currentTime = current}
   Quit -> return ()

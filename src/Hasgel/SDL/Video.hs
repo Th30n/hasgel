@@ -159,7 +159,7 @@ data GLContextProfile =
   -- ^ OpenGL compatibility profile - deprecated functions are allowed.
   | GLES
   -- ^ OpenGL ES profile - only a subset of the base OpenGL
-  -- ^ functionality is available.
+  -- functionality is available.
   deriving (Show)
 
 -- | Set the OpenGL context profile. Returns error on failure.
@@ -176,18 +176,18 @@ glSetContextProfile prof = do
 data GLContextFlag =
   GLDebug
   -- ^ This flag is intended to put GL into a debug mode which might offer
-  -- ^ better developer insights, possibly at a loss of performance.
+  -- better developer insights, possibly at a loss of performance.
   | GLForwardCompatible
   -- ^ Puts GL into forward compatible mode, which means no depracated
-  -- ^ functionality will be supported, possibly at a gain of performance.
-  -- ^ Applies only to GL 3.0 and later contexts.
+  -- functionality will be supported, possibly at a gain of performance.
+  -- Applies only to GL 3.0 and later contexts.
   | GLRobustAccess
   -- ^ This flag is intended to require a GL context that supports the
-  -- ^ GL_ARB_robustness extension which offers a few APIs that are safer
-  -- ^ than the usual defaults.
+  -- GL_ARB_robustness extension which offers a few APIs that are safer
+  -- than the usual defaults.
   | GLResetIsolation
   -- ^ Requires the GL to make promises about what to do in the face of driver
-  -- ^ or hardware failure.
+  -- or hardware failure.
   deriving (Show, Eq, Ord, Bounded, Enum)
 
 instance BitFlag GLContextFlag where

@@ -1,7 +1,5 @@
 -- | Provides access to rendering display
 module Hasgel.Display (
-  initDisplay,
-  quitDisplay,
   Display,
   renderDisplay,
   destroyDisplay,
@@ -10,7 +8,6 @@ module Hasgel.Display (
 
 import Control.Error
 
-import Hasgel.SDL.Basic as MySDL
 import Hasgel.SDL.Video as MySDL
 
 -- | Stores resources of a display, and provides functions for rendering
@@ -21,15 +18,6 @@ data Display a b = Display {
   renderDisplay :: IO () -> IO (), -- ^ Take an IO rendering action and render.
   destroyDisplay :: IO () -- ^ Clean up the resources of this display.
 }
-
--- | Initialize display system.
--- | Returns error string if failed.
-initDisplay :: Script ()
-initDisplay = MySDL.init [MySDL.InitVideo]
-
--- | Shut down display system.
-quitDisplay :: IO ()
-quitDisplay = MySDL.quit
 
 -- | Create window with OpenGl context.
 createWindow :: Script MySDL.Window

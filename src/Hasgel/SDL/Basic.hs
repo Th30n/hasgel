@@ -2,15 +2,16 @@
 -- on official documentation wiki.
 module Hasgel.SDL.Basic (
   -- * Initialization and shutdown
-  InitFlag(..),
+  InitFlag(..), withInit,
   init, initSubSystem, quit, quitSubSystem, setMainReady, wasInit,
   -- * Error handling
   clearError, getError
 ) where
 
-import Data.Word (Word32)
 import Control.Error
+import Control.Exception (bracket_)
 import Control.Monad (unless)
+import Data.Word (Word32)
 import Foreign.C.String (peekCString)
 import Foreign.C.Types (CInt)
 import Prelude hiding (init)
@@ -62,6 +63,11 @@ unmarshalInitFlag x
   | x == fromIntegral SDL.SDL_INIT_EVERYTHING = Just InitEverything
   | x == fromIntegral SDL.SDL_INIT_NOPARACHUTE = Just InitNoParachute
   | otherwise = Nothing
+
+-- | Initializes SDL, performs the action and quits SDL.
+-- Cleanup is performed also in case of an exception.
+withInit :: [InitFlag] -> IO a -> IO a
+withInit flags = bracket_ (runScript $ init flags) quit
 
 -- | This function is used to initialize the SDL library.
 -- It must be called before using any other SDL function.
@@ -115,9 +121,9 @@ wasInit mask = do
   return $ fromBitFlags ss
 
 -- | Returns the error message of last error or empty string if no error.
--- | The error message is then cleared from SDL.
--- | This message might not be necessary if every call of SDL functions
--- | from here will return Left Error upon error.
+-- The error message is then cleared from SDL.
+-- This message might not be necessary if every call of SDL functions
+-- from here will return Left Error upon error.
 getError :: IO String
 getError = SDL.getError >>= (\e -> clearError >> peekCString e)
 
