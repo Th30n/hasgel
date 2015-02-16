@@ -1,6 +1,7 @@
 module Main ( main ) where
 
 import Control.Error
+import Control.Monad (when)
 import Data.Word (Word32)
 import Foreign.Marshal.Array (allocaArray, peekArray, withArray)
 import Graphics.GL.Core45
@@ -50,6 +51,8 @@ loop curw = case loopState curw of
         glClearBufferfv GL_COLOR 0 color
       glPointSize 40.0
       glDrawArrays GL_TRIANGLES 0 3
+      errFlag <- Hasgel.GL.getError
+      when (errFlag /= NoError) . fail $ show errFlag
     current <- SDL.getTicks
     loop w { currentTime = current}
   Quit -> return ()

@@ -1,10 +1,11 @@
 module Hasgel.GL (
-  Shader(..), Program(..), ShaderType(..),
-  compileShader, linkProgram
+  Shader(..), Program(..), ShaderType(..), ErrorFlag(..),
+  compileShader, linkProgram, getError
 ) where
 
 import Control.Error
-import Control.Monad (when)
+import Control.Monad (liftM, when)
+import Control.Monad.IO.Class (MonadIO)
 import Foreign.C.String (withCAString)
 import Foreign.Marshal.Array (withArray)
 import Foreign.Ptr (nullPtr)
@@ -58,3 +59,30 @@ linkProgram ss = do
   glLinkProgram program
   return $ Program program
 
+-- | Enumeration of possible error codes in OpenGL.
+data ErrorFlag =
+  NoError
+  | InvalidEnum
+  | InvalidValue
+  | InvalidOperation
+  | InvalidFramebufferOperation
+  | OutOfMemory
+  | StackUnderflow
+  | StackOverflow
+  deriving (Show, Eq)
+
+-- | Converts from numerical representation to 'ErrorFlag'
+unmarshalErrorFlag :: GLenum -> Maybe ErrorFlag
+unmarshalErrorFlag val
+  | val == GL_NO_ERROR = Just NoError
+  | val == GL_INVALID_ENUM = Just InvalidEnum
+  | val == GL_INVALID_OPERATION = Just InvalidOperation
+  | val == GL_INVALID_FRAMEBUFFER_OPERATION = Just InvalidFramebufferOperation
+  | val == GL_OUT_OF_MEMORY = Just OutOfMemory
+  | val == GL_STACK_UNDERFLOW = Just StackUnderflow
+  | val == GL_STACK_OVERFLOW = Just StackOverflow
+  | otherwise = Nothing
+
+-- | Returns 'ErrorFlag'.
+getError :: MonadIO m => m ErrorFlag
+getError = (fromMaybe NoError . unmarshalErrorFlag) `liftM` glGetError
