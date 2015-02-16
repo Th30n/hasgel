@@ -74,16 +74,8 @@ compileShaders = do
         "{\n" ++
             "color = vec4(0.0, 0.8, 1.0, 1.0);\n" ++
         "}\n"
-  vs <- glCreateShader GL_VERTEX_SHADER
-  when (vs == 0) $ throwT "Error creating shader."
-  scriptIO . withCAString vsSrc $ \str ->
-    withArray [str] $ \src -> glShaderSource vs 1 src nullPtr
-  glCompileShader vs
-  fs <- glCreateShader GL_FRAGMENT_SHADER
-  when (fs == 0) $ throwT "Error creating shader."
-  scriptIO . withCAString fsSrc $ \str ->
-    withArray [str] $ \src -> glShaderSource fs 1 src nullPtr
-  glCompileShader fs
+  vs <- createShader vsSrc VertexShader
+  fs <- createShader fsSrc FragmentShader
   program <- glCreateProgram
   when (program == 0) $ throwT "Error creating program."
   glAttachShader program vs
@@ -92,3 +84,37 @@ compileShaders = do
   glDeleteShader vs
   glDeleteShader fs
   return program
+
+-- | Shader object.
+type Shader = GLuint
+
+data ShaderType =
+  ComputeShader
+  | VertexShader
+  | TessControlShader
+  | TessEvaluationShader
+  | GeometryShader
+  | FragmentShader
+  deriving (Show)
+
+-- | Transform from 'ShaderType' to raw 'GLenum' representation.
+marshalShaderType :: ShaderType -> GLenum
+marshalShaderType ComputeShader = GL_COMPUTE_SHADER
+marshalShaderType VertexShader = GL_VERTEX_SHADER
+marshalShaderType TessControlShader = GL_TESS_CONTROL_SHADER
+marshalShaderType TessEvaluationShader = GL_TESS_EVALUATION_SHADER
+marshalShaderType GeometryShader = GL_GEOMETRY_SHADER
+marshalShaderType FragmentShader = GL_FRAGMENT_SHADER
+
+-- | Creates shader object of given type and compiles it with given source.
+-- Shader object must be deleted after use.
+-- Returns error message on failure.
+createShader :: String -> ShaderType -> Script Shader
+createShader source shaderType = do
+  shader <- glCreateShader $ marshalShaderType shaderType
+  when (shader == 0) .
+    throwT $ "Error creating shader of type " ++ show shaderType
+  scriptIO . withCAString source $ \str ->
+    withArray [str] $ \srcArray -> glShaderSource shader 1 srcArray nullPtr
+  glCompileShader shader
+  return shader
