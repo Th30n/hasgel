@@ -1,9 +1,13 @@
 module Main ( main ) where
 
 import Control.Error
+import Control.Monad (when)
 import Data.Word (Word32)
-import Foreign.Marshal.Array (withArray)
+import Foreign.C.String (withCAString)
+import Foreign.Marshal.Array (allocaArray, peekArray, withArray)
+import Foreign.Ptr (nullPtr)
 import Graphics.GL.Core45
+import Graphics.GL.Types
 import Graphics.UI.SDL as SDL
 import Prelude
 
@@ -15,9 +19,17 @@ main :: IO ()
 main =
   MySDL.withInit [MySDL.InitVideo] $ runScript createDisplay >>=
     (\d -> do
-      current <- SDL.getTicks
-      loop World { loopState = Continue, display = d,
-                   currentTime = current }
+      program <- runScript compileShaders
+      allocaArray 1 $ \vaoPtr -> do
+        glGenVertexArrays 1 vaoPtr
+        vao <- peekArray 1 vaoPtr
+        glBindVertexArray $ head vao
+        glUseProgram program
+        current <- SDL.getTicks
+        loop World { loopState = Continue, display = d,
+                     currentTime = current }
+        glDeleteVertexArrays 1 vaoPtr
+      glDeleteProgram program
       destroyDisplay d)
 
 data LoopState = Continue | Quit
@@ -39,6 +51,8 @@ loop curw = case loopState curw of
       let g = 0.5 + 0.5 * cos current
       withArray [r, g, 0.0, 1.0] $ \color ->
         glClearBufferfv GL_COLOR 0 color
+      glPointSize 40.0
+      glDrawArrays GL_POINTS 0 1
     current <- SDL.getTicks
     loop w { currentTime = current}
   Quit -> return ()
@@ -46,3 +60,35 @@ loop curw = case loopState curw of
 handleEvent :: WorldState a b -> MySDL.Event -> WorldState a b
 handleEvent w (MySDL.QuitEvent _ _) = w { loopState = Quit }
 handleEvent w _ = w
+
+compileShaders :: Script GLuint
+compileShaders = do
+  let vsSrc = "#version 430 core\n" ++
+        "void main(void)\n" ++
+        "{\n" ++
+            "gl_Position = vec4(0.0, 0.0, 0.5, 1.0);\n" ++
+        "}\n"
+  let fsSrc = "#version 430 core\n" ++
+        "out vec4 color;\n" ++
+        "void main(void)\n" ++
+        "{\n" ++
+            "color = vec4(0.0, 0.8, 1.0, 1.0);\n" ++
+        "}\n"
+  vs <- glCreateShader GL_VERTEX_SHADER
+  when (vs == 0) $ throwT "Error creating shader."
+  scriptIO . withCAString vsSrc $ \str ->
+    withArray [str] $ \src -> glShaderSource vs 1 src nullPtr
+  glCompileShader vs
+  fs <- glCreateShader GL_FRAGMENT_SHADER
+  when (fs == 0) $ throwT "Error creating shader."
+  scriptIO . withCAString fsSrc $ \str ->
+    withArray [str] $ \src -> glShaderSource fs 1 src nullPtr
+  glCompileShader fs
+  program <- glCreateProgram
+  when (program == 0) $ throwT "Error creating program."
+  glAttachShader program vs
+  glAttachShader program fs
+  glLinkProgram program
+  glDeleteShader vs
+  glDeleteShader fs
+  return program

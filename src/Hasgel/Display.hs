@@ -22,7 +22,7 @@ data Display a b = Display {
 -- | Create window with OpenGl context.
 createWindow :: Script MySDL.Window
 createWindow = do
-  MySDL.glSetContextVersion 3 3
+  MySDL.glSetContextVersion 4 3
   MySDL.glSetContextFlags [MySDL.GLForwardCompatible]
   MySDL.glSetContextProfile MySDL.GLCore
   let t = "hasgel"
