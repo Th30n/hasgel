@@ -5,13 +5,13 @@ import Control.Monad (when)
 import Data.Word (Word32)
 import Foreign.Marshal.Array (allocaArray, peekArray, withArray)
 import Graphics.GL.Core45
-import Graphics.UI.SDL as SDL
+import qualified Graphics.UI.SDL as SDL
 import Prelude
 
 import Hasgel.Display
 import Hasgel.GL
-import Hasgel.SDL.Basic as MySDL
-import Hasgel.SDL.Events as MySDL
+import qualified Hasgel.SDL.Basic as MySDL
+import qualified Hasgel.SDL.Events as MySDL
 
 main :: IO ()
 main =

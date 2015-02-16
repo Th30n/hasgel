@@ -8,7 +8,7 @@ module Hasgel.Display (
 
 import Control.Error
 
-import Hasgel.SDL.Video as MySDL
+import qualified Hasgel.SDL.Video as MySDL
 
 -- | Stores resources of a display, and provides functions for rendering
 -- and cleaning up.
@@ -35,7 +35,7 @@ createContext = MySDL.glCreateContext
 -- | Creates a display window with context for rendering.
 createDisplay :: Script (Display MySDL.Window MySDL.GLContext)
 createDisplay = do
-  w <- Hasgel.Display.createWindow
+  w <- createWindow
   c <- createContext w
   return Display {
     getWindow = w,
