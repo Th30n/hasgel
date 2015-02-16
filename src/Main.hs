@@ -49,7 +49,7 @@ loop curw = case loopState curw of
       withArray [r, g, 0.0, 1.0] $ \color ->
         glClearBufferfv GL_COLOR 0 color
       glPointSize 40.0
-      glDrawArrays GL_POINTS 0 1
+      glDrawArrays GL_TRIANGLES 0 3
     current <- SDL.getTicks
     loop w { currentTime = current}
   Quit -> return ()
@@ -63,7 +63,10 @@ compileShaders = do
   let vsSrc = "#version 430 core\n" ++
         "void main(void)\n" ++
         "{\n" ++
-            "gl_Position = vec4(0.0, 0.0, 0.5, 1.0);\n" ++
+            "const vec4 vertices[3] = vec4[3](vec4(0.25, -0.25, 0.5, 1.0),\n" ++
+            "                                 vec4(-0.25, -0.25, 0.5, 1.0),\n" ++
+            "                                 vec4(0.25, 0.25, 0.5, 1.0));\n" ++
+            "gl_Position = vertices[gl_VertexID];\n" ++
         "}\n"
   let fsSrc = "#version 430 core\n" ++
         "out vec4 color;\n" ++
