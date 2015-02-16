@@ -4,7 +4,7 @@ module Hasgel.SDL.BitFlag (
 ) where
 
 import Data.Bits (Bits, (.&.), (.|.))
-import Data.List (foldl')
+import Data.Foldable (foldl')
 import Data.Maybe (mapMaybe)
 
 -- | Type class for various BitFlag types.
@@ -16,7 +16,7 @@ class (Bounded f, Enum f) => BitFlag f where
   unmarshalBitFlag :: (Num a, Eq a, BitFlag f) => a -> Maybe f
   -- | Converts multiple flags to numerical representation using bitwise 'or'.
   createBitFlags :: (BitFlag f, Num a, Bits a) => [f] -> a
-  createBitFlags = foldl' (.|.) 0 . map marshalBitFlag
+  createBitFlags = foldl' (.|.) 0 . fmap marshalBitFlag
   -- | Converts numerical representation of flags back to list of BitFlag.
   fromBitFlags :: (Num a, Bits a, BitFlag f) => a -> [f]
   fromBitFlags = fromBitFlags' [minBound..]
