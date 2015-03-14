@@ -2,6 +2,7 @@ module Main ( main ) where
 
 import Control.Error
 import Control.Monad (when)
+import Control.Monad.IO.Class
 import Data.Word (Word32)
 import Foreign.Marshal.Array (allocaArray, peekArray, withArray)
 import Graphics.GL.Core45
@@ -38,18 +39,19 @@ data WorldState a b = World {
   currentTime :: Word32 -- ^ Time in milliseconds
 }
 
-loop :: WorldState a b -> IO ()
+loop :: MonadIO m => WorldState a b -> m ()
 loop curw = case loopState curw of
   Continue -> do
-    event <- MySDL.pollEvent
+    event <- liftIO MySDL.pollEvent
     let w = maybe curw (handleEvent curw) event
-    renderDisplay (display w) $ do
+    liftIO $ renderDisplay (display w) $ do
       let current = fromIntegral (currentTime w) / 1000
       let r = 0.5 + 0.5 * sin current
       let g = 0.5 + 0.5 * cos current
       withArray [r, g, 0.0, 1.0] $ \color ->
         glClearBufferfv GL_COLOR 0 color
-      glPointSize 40.0
+      withArray [0.5 * sin current, 0.6 * cos current, 0.0, 0.0] $ \attrib ->
+        glVertexAttrib4fv 0 attrib
       glDrawArrays GL_TRIANGLES 0 3
       errFlag <- Hasgel.GL.getError
       when (errFlag /= NoError) . fail $ show errFlag
@@ -63,20 +65,8 @@ handleEvent w _ = w
 
 compileShaders :: Script Program
 compileShaders = do
-  let vsSrc = "#version 430 core\n" ++
-        "void main(void)\n" ++
-        "{\n" ++
-            "const vec4 vertices[3] = vec4[3](vec4(0.25, -0.25, 0.5, 1.0),\n" ++
-            "                                 vec4(-0.25, -0.25, 0.5, 1.0),\n" ++
-            "                                 vec4(0.25, 0.25, 0.5, 1.0));\n" ++
-            "gl_Position = vertices[gl_VertexID];\n" ++
-        "}\n"
-  let fsSrc = "#version 430 core\n" ++
-        "out vec4 color;\n" ++
-        "void main(void)\n" ++
-        "{\n" ++
-            "color = vec4(0.0, 0.8, 1.0, 1.0);\n" ++
-        "}\n"
+  vsSrc <- scriptIO $ readFile "shaders/basic.vert"
+  fsSrc <- scriptIO $ readFile "shaders/basic.frag"
   vs <- compileShader vsSrc VertexShader
   fs <- compileShader fsSrc FragmentShader
   program <- linkProgram [vs, fs]
