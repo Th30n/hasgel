@@ -44,7 +44,7 @@ loop curw = case loopState curw of
   Continue -> do
     event <- liftIO MySDL.pollEvent
     let w = maybe curw (handleEvent curw) event
-    liftIO $ renderDisplay (display w) $ do
+    liftIO . renderDisplay (display w) $ do
       let current = fromIntegral (currentTime w) / 1000
       let r = 0.5 + 0.5 * sin current
       let g = 0.5 + 0.5 * cos current
