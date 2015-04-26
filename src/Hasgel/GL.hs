@@ -5,8 +5,9 @@ module Hasgel.GL (
 ) where
 
 import Control.Error
-import Control.Monad (liftM, when)
+import Control.Monad (when)
 import Control.Monad.IO.Class
+import Data.Monoid ((<>))
 import Foreign.C.String (peekCString, withCAString)
 import Foreign.Marshal (alloca, allocaArray, withArray)
 import Foreign.Ptr (nullPtr)
@@ -45,7 +46,7 @@ compileShader :: String -> ShaderType -> Script Shader
 compileShader source shaderType = do
   shader <- glCreateShader $ marshalShaderType shaderType
   when (shader == 0) .
-    throwT $ "Error creating shader of type " ++ show shaderType
+    throwT $ "Error creating shader of type " <> show shaderType
   scriptIO . withCAString source $ \str ->
     withArray [str] $ \srcArray -> glShaderSource shader 1 srcArray nullPtr
   glCompileShader shader
@@ -127,4 +128,4 @@ unmarshalErrorFlag val
 
 -- | Returns 'ErrorFlag'.
 getError :: MonadIO m => m ErrorFlag
-getError = (fromMaybe NoError . unmarshalErrorFlag) `liftM` glGetError
+getError = (fromMaybe NoError . unmarshalErrorFlag) <$> glGetError

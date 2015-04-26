@@ -23,5 +23,5 @@ class (Bounded f, Enum f) => BitFlag f where
 
 fromBitFlags' :: (Num a, Bits a, BitFlag f) => [f] -> a -> [f]
 fromBitFlags' allBitFlags bits = mapMaybe unmarshalBitFlag flags
-  where flags = filter ((`elem` rawBitFlags) . (.&. bits)) rawBitFlags
+  where flags = filter (\b -> b == b .&. bits) rawBitFlags
         rawBitFlags = map marshalBitFlag allBitFlags
