@@ -32,13 +32,13 @@ main =
 
 data LoopState = Continue | Quit
 
-data WorldState a b = World
+data WorldState = World
   { loopState :: LoopState
-  , display :: Display a b
+  , display :: Display
   , currentTime :: Word32 -- ^ Time in milliseconds
   }
 
-loop :: MonadIO m => WorldState a b -> m ()
+loop :: MonadIO m => WorldState -> m ()
 loop curw = case loopState curw of
   Continue -> do
     event <- liftIO MySDL.pollEvent
@@ -58,7 +58,7 @@ loop curw = case loopState curw of
     loop w { currentTime = current}
   Quit -> return ()
 
-handleEvent :: WorldState a b -> MySDL.Event -> WorldState a b
+handleEvent :: WorldState -> MySDL.Event -> WorldState
 handleEvent w (MySDL.QuitEvent _ _) = w { loopState = Quit }
 handleEvent w _ = w
 

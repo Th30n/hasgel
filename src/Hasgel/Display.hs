@@ -13,9 +13,9 @@ import qualified Hasgel.SDL.Video as MySDL
 
 -- | Stores resources of a display, and provides functions for rendering
 -- and cleaning up.
-data Display a b = Display {
-  getWindow :: a, -- ^ Get underlying window implementation.
-  getContext :: b, -- ^ Get underlying context implementation.
+data Display = Display {
+  getWindow :: MySDL.Window, -- ^ Get underlying window implementation.
+  getContext :: MySDL.GLContext, -- ^ Get underlying context implementation.
   renderDisplay :: IO () -> IO (), -- ^ Take an IO rendering action and render.
   destroyDisplay :: IO () -- ^ Clean up the resources of this display.
 }
@@ -34,7 +34,7 @@ createContext :: MonadIO m => MySDL.Window -> m MySDL.GLContext
 createContext = MySDL.glCreateContext
 
 -- | Creates a display window with context for rendering.
-createDisplay :: MonadIO m => m (Display MySDL.Window MySDL.GLContext)
+createDisplay :: MonadIO m => m Display
 createDisplay = do
   w <- createWindow
   c <- createContext w
