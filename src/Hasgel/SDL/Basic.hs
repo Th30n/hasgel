@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- | This module corresponds to SDL 2.0 Basics category
 -- on official documentation wiki.
 module Hasgel.SDL.Basic (
@@ -8,9 +9,12 @@ module Hasgel.SDL.Basic (
   clearError, getError
 ) where
 
-import Control.Error
+
 import Control.Exception (bracket_)
 import Control.Monad (unless)
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Control
+import Data.Monoid ((<>))
 import Data.Word (Word32)
 import Foreign.C.String (peekCString)
 import Foreign.C.Types (CInt)
@@ -66,27 +70,27 @@ unmarshalInitFlag x
 
 -- | Initializes SDL, performs the action and quits SDL.
 -- Cleanup is performed also in case of an exception.
-withInit :: [InitFlag] -> IO a -> IO a
-withInit flags = bracket_ (runScript $ init flags) quit
+withInit :: (MonadIO m, MonadBaseControl IO m) => [InitFlag] -> m a -> m a
+withInit flags = liftBaseOp_ $ bracket_ (init flags) quit
 
 -- | This function is used to initialize the SDL library.
 -- It must be called before using any other SDL function.
 -- On failure returns Error message otherwise ().
 -- If you want to initialize subsystems separately pass an empty InitFlag list
 -- and use initSubSystem.
-init :: [InitFlag] -> Script ()
+init :: MonadIO m => [InitFlag] -> m ()
 init = initWithFun SDL.init
 
 -- | This function is used to initialize specific SDL subsystems.
-initSubSystem :: [InitFlag] -> Script ()
+initSubSystem :: MonadIO m => [InitFlag] -> m ()
 initSubSystem = initWithFun SDL.initSubSystem
 
-initWithFun :: (SDL.InitFlag -> IO CInt) -> [InitFlag] -> Script ()
+initWithFun :: MonadIO m => (SDL.InitFlag -> m CInt) -> [InitFlag] -> m ()
 initWithFun f flags = do
-  r <- scriptIO . f $ createBitFlags flags
+  r <- f $ createBitFlags flags
   unless (r == 0) $ do
-    errMsg <- scriptIO getError
-    throwT $ "SDL initialization error (" ++ show r ++"): " ++ errMsg
+    errMsg <- getError
+    fail $ "SDL initialization error (" <> show r <>"): " <> errMsg
 
 -- | Cleans up all initialized subsystems.
 -- It should be called upon all exit conditions even if you have
@@ -95,11 +99,11 @@ initWithFun f flags = do
 -- function (e.g. videoInit) instead of init or initSubSystem then it must
 -- be closed using that subsystem's quit function (e.g. videoQuit) before
 -- calling quit.
-quit :: IO ()
+quit :: MonadIO m => m ()
 quit = SDL.quit
 
 -- | Shut down specific SDL subsystems.
-quitSubSystem :: [InitFlag] -> IO ()
+quitSubSystem :: MonadIO m => [InitFlag] -> m ()
 quitSubSystem = SDL.quitSubSystem . createBitFlags
 
 -- | This function is used to avoid failure of init when not using SDL_main()
@@ -107,7 +111,7 @@ quitSubSystem = SDL.quitSubSystem . createBitFlags
 -- is necessary to define SDL_MAIN_HANDLED before including SDL.h.
 -- I'm not really sure how this affects Haskell code. On my ArchLinux SDL
 -- works fine without calling this function or providing C defines.
-setMainReady :: IO ()
+setMainReady :: MonadIO m => m ()
 setMainReady = SDL.setMainReady
 
 -- | Takes a list of InitFlag as a mask for querying which subsystems
@@ -115,7 +119,7 @@ setMainReady = SDL.setMainReady
 -- systems satisfying the given mask.
 -- Giving an empty list as a mask is equivalent to using InitEverything
 -- as a mask.
-wasInit :: [InitFlag] -> IO [InitFlag]
+wasInit :: MonadIO m => [InitFlag] -> m [InitFlag]
 wasInit mask = do
   ss <- SDL.wasInit $ createBitFlags mask
   return $ fromBitFlags ss
@@ -124,10 +128,10 @@ wasInit mask = do
 -- The error message is then cleared from SDL.
 -- This message might not be necessary if every call of SDL functions
 -- from here will return Left Error upon error.
-getError :: IO String
-getError = SDL.getError >>= (\e -> clearError >> peekCString e)
+getError :: MonadIO m => m String
+getError = SDL.getError >>= (\e -> clearError >> liftIO (peekCString e))
 
 -- | Clears any previous error message.
 -- I don't think this is necessary since getError cleans up after.
-clearError :: IO ()
+clearError :: MonadIO m => m ()
 clearError = SDL.clearError

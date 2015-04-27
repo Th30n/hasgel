@@ -10,8 +10,9 @@ module Hasgel.SDL.Video (
   glSwapWindow
 ) where
 
-import Control.Error
+
 import Control.Monad (when)
+import Control.Monad.IO.Class
 import Foreign.C.String (withCString)
 import Foreign.C.Types (CInt)
 import Foreign.Ptr (nullPtr)
@@ -111,12 +112,12 @@ type Window = SDL.Window
 -- 'WindowMaximized', 'WindowInputGrabbed', 'WindowAllowHighDpi'.
 --
 -- On failure returns error message.
-createWindow :: String -> WindowRectangle -> [WindowFlag] -> Script Window
+createWindow :: MonadIO m => String -> WindowRectangle -> [WindowFlag] -> m Window
 createWindow title rect flags = do
-  w <- scriptIO createWindow'
-  when (w == nullPtr) $ scriptIO getError >>= throwT
+  w <- createWindow'
+  when (w == nullPtr) $ getError >>= fail
   return w
-  where createWindow' = withCString title $ \t -> do
+  where createWindow' = liftIO . withCString title $ \t -> do
           let x = marshalWindowPos $ posX rect
           let y = marshalWindowPos $ posY rect
           let bits = createBitFlags flags
@@ -132,10 +133,10 @@ type GLContext = SDL.GLContext
 -- The window needs to have been created with 'WindowOpenGL' flag.
 --
 -- Returns error message on failure.
-glCreateContext :: Window -> Script GLContext
+glCreateContext :: MonadIO m => Window -> m GLContext
 glCreateContext w = do
-  c <- scriptIO $ SDL.glCreateContext w
-  when (c == nullPtr) $ scriptIO getError >>= throwT
+  c <- SDL.glCreateContext w
+  when (c == nullPtr) $ getError >>= fail
   return c
 
 -- | Deletes an OpenGL context.
@@ -144,12 +145,12 @@ glDeleteContext = SDL.glDeleteContext
 
 -- | Sets the OpenGL context major and minor version.
 -- | Returns error on failure.
-glSetContextVersion :: CInt -> CInt -> Script ()
+glSetContextVersion :: MonadIO m => CInt -> CInt -> m ()
 glSetContextVersion major minor = do
-  r <- scriptIO $ SDL.glSetAttribute SDL.SDL_GL_CONTEXT_MAJOR_VERSION major
-  when (r /= 0) $ scriptIO getError >>= throwT
-  r' <- scriptIO $ SDL.glSetAttribute SDL.SDL_GL_CONTEXT_MINOR_VERSION minor
-  when (r' /= 0) $ scriptIO getError >>= throwT
+  r <- SDL.glSetAttribute SDL.SDL_GL_CONTEXT_MAJOR_VERSION major
+  when (r /= 0) $ getError >>= fail
+  r' <- SDL.glSetAttribute SDL.SDL_GL_CONTEXT_MINOR_VERSION minor
+  when (r' /= 0) $ getError >>= fail
 
 -- | OpenGL profiles.
 data GLContextProfile =
@@ -163,14 +164,14 @@ data GLContextProfile =
   deriving (Show)
 
 -- | Set the OpenGL context profile. Returns error on failure.
-glSetContextProfile :: GLContextProfile -> Script ()
+glSetContextProfile :: MonadIO m => GLContextProfile -> m ()
 glSetContextProfile prof = do
   let prof' = case prof of
                 GLCore -> SDL.SDL_GL_CONTEXT_PROFILE_CORE
                 GLCompatibility -> SDL.SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
                 GLES -> SDL.SDL_GL_CONTEXT_PROFILE_ES
-  r <- scriptIO $ SDL.glSetAttribute SDL.SDL_GL_CONTEXT_PROFILE_MASK prof'
-  when (r /= 0) $ scriptIO getError >>= throwT
+  r <- SDL.glSetAttribute SDL.SDL_GL_CONTEXT_PROFILE_MASK prof'
+  when (r /= 0) $ getError >>= fail
 
 -- | OpenGL context flags.
 data GLContextFlag =
@@ -201,11 +202,11 @@ instance BitFlag GLContextFlag where
     error "TODO: Hasgel.SDL.Video.GLContextFlag => unmarshalBitFlag"
 
 -- | Sets OpenGL context flags. Returns error on failure.
-glSetContextFlags :: [GLContextFlag] -> Script ()
+glSetContextFlags :: MonadIO m => [GLContextFlag] -> m ()
 glSetContextFlags flags = do
   let flags' = createBitFlags flags
-  r <- scriptIO $ SDL.glSetAttribute SDL.SDL_GL_CONTEXT_FLAGS flags'
-  when (r /= 0) $ scriptIO getError >>= throwT
+  r <- SDL.glSetAttribute SDL.SDL_GL_CONTEXT_FLAGS flags'
+  when (r /= 0) $ getError >>= fail
 
 -- | This function is used for updating a window with OpenGL rendering.
 glSwapWindow :: Window -> IO ()

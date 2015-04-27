@@ -1,6 +1,5 @@
 module Main ( main ) where
 
-import Control.Error
 import Control.Monad (when)
 import Control.Monad.IO.Class
 import Data.Word (Word32)
@@ -16,9 +15,9 @@ import qualified Hasgel.SDL.Events as MySDL
 
 main :: IO ()
 main =
-  MySDL.withInit [MySDL.InitVideo] $ runScript createDisplay >>=
+  MySDL.withInit [MySDL.InitVideo] $ createDisplay >>=
     (\d -> do
-      Program program <- runScript compileShaders
+      Program program <- compileShaders
       allocaArray 1 $ \vaoPtr -> do
         glGenVertexArrays 1 vaoPtr
         vao <- peekArray 1 vaoPtr
@@ -33,11 +32,11 @@ main =
 
 data LoopState = Continue | Quit
 
-data WorldState a b = World {
-  loopState :: LoopState,
-  display :: Display a b,
-  currentTime :: Word32 -- ^ Time in milliseconds
-}
+data WorldState a b = World
+  { loopState :: LoopState
+  , display :: Display a b
+  , currentTime :: Word32 -- ^ Time in milliseconds
+  }
 
 loop :: MonadIO m => WorldState a b -> m ()
 loop curw = case loopState curw of
@@ -63,10 +62,10 @@ handleEvent :: WorldState a b -> MySDL.Event -> WorldState a b
 handleEvent w (MySDL.QuitEvent _ _) = w { loopState = Quit }
 handleEvent w _ = w
 
-compileShaders :: Script Program
+compileShaders :: MonadIO m => m Program
 compileShaders = do
-  vsSrc <- scriptIO $ readFile "shaders/basic.vert"
-  fsSrc <- scriptIO $ readFile "shaders/basic.frag"
+  vsSrc <- liftIO $ readFile "shaders/basic.vert"
+  fsSrc <- liftIO $ readFile "shaders/basic.frag"
   vs <- compileShader vsSrc VertexShader
   fs <- compileShader fsSrc FragmentShader
   program <- linkProgram [vs, fs]

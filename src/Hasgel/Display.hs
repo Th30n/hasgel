@@ -6,7 +6,8 @@ module Hasgel.Display (
   createDisplay,
 ) where
 
-import Control.Error
+
+import Control.Monad.IO.Class
 
 import qualified Hasgel.SDL.Video as MySDL
 
@@ -20,7 +21,7 @@ data Display a b = Display {
 }
 
 -- | Create window with OpenGl context.
-createWindow :: Script MySDL.Window
+createWindow :: MonadIO m => m MySDL.Window
 createWindow = do
   MySDL.glSetContextVersion 4 3
   MySDL.glSetContextFlags [MySDL.GLForwardCompatible]
@@ -29,11 +30,11 @@ createWindow = do
   let rect = MySDL.WindowRectangle (MySDL.Pos 0) MySDL.Centered 800 600
   MySDL.createWindow t rect [MySDL.WindowOpenGL]
 
-createContext :: MySDL.Window -> Script MySDL.GLContext
+createContext :: MonadIO m => MySDL.Window -> m MySDL.GLContext
 createContext = MySDL.glCreateContext
 
 -- | Creates a display window with context for rendering.
-createDisplay :: Script (Display MySDL.Window MySDL.GLContext)
+createDisplay :: MonadIO m => m (Display MySDL.Window MySDL.GLContext)
 createDisplay = do
   w <- createWindow
   c <- createContext w

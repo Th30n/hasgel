@@ -4,9 +4,9 @@ module Hasgel.GL (
   getProgramiv, getProgramInfoLog
 ) where
 
-import Control.Error
 import Control.Monad (when)
 import Control.Monad.IO.Class
+import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>))
 import Foreign.C.String (peekCString, withCAString)
 import Foreign.Marshal (alloca, allocaArray, withArray)
@@ -42,19 +42,19 @@ marshalShaderType FragmentShader = GL_FRAGMENT_SHADER
 -- | Creates shader object of given type and compiles it with given source.
 -- Shader object must be deleted after use.
 -- Returns error message on failure.
-compileShader :: String -> ShaderType -> Script Shader
+compileShader :: MonadIO m => String -> ShaderType -> m Shader
 compileShader source shaderType = do
   shader <- glCreateShader $ marshalShaderType shaderType
   when (shader == 0) .
-    throwT $ "Error creating shader of type " <> show shaderType
-  scriptIO . withCAString source $ \str ->
+    fail $ "Error creating shader of type " <> show shaderType
+  liftIO . withCAString source $ \str ->
     withArray [str] $ \srcArray -> glShaderSource shader 1 srcArray nullPtr
   glCompileShader shader
   status <- getShaderiv (Shader shader) GL_COMPILE_STATUS
   when (status == GL_FALSE) $ do
     compileLog <- getShaderInfoLog $ Shader shader
     glDeleteShader shader
-    throwT compileLog
+    fail compileLog
   return $ Shader shader
 
 -- | Returns the information log for a shader object.
@@ -74,17 +74,17 @@ getShaderiv (Shader shader) pname =
 
 -- | Creates a program object and links it with compiled shader objects.
 -- Returns error message on failure.
-linkProgram :: [Shader] -> Script Program
+linkProgram :: MonadIO m => [Shader] -> m Program
 linkProgram ss = do
   program <- glCreateProgram
-  when (program == 0) $ throwT "Error creating program."
+  when (program == 0) $ fail "Error creating program."
   mapM_ (\(Shader sh) -> glAttachShader program sh) ss
   glLinkProgram program
   status <- getProgramiv (Program program) GL_LINK_STATUS
   when (status == GL_FALSE) $ do
     linkLog <- getProgramInfoLog $ Program program
     glDeleteProgram program
-    throwT linkLog
+    fail linkLog
   return $ Program program
 
 -- | Returns the information log for a program object.
