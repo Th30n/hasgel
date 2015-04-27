@@ -12,7 +12,7 @@ module Hasgel.SDL.Video (
 
 
 import Control.Monad (when)
-import Control.Monad.IO.Class
+import Control.Monad.IO.Class (MonadIO (..))
 import Foreign.C.String (withCString)
 import Foreign.C.Types (CInt)
 import Foreign.Ptr (nullPtr)

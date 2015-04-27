@@ -12,8 +12,8 @@ module Hasgel.SDL.Basic (
 
 import Control.Exception (bracket_)
 import Control.Monad (unless)
-import Control.Monad.IO.Class
-import Control.Monad.Trans.Control
+import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
 import Data.Monoid ((<>))
 import Data.Word (Word32)
 import Foreign.C.String (peekCString)

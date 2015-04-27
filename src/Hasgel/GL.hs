@@ -5,7 +5,7 @@ module Hasgel.GL (
 ) where
 
 import Control.Monad (when)
-import Control.Monad.IO.Class
+import Control.Monad.IO.Class (MonadIO (..))
 import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>))
 import Foreign.C.String (peekCString, withCAString)
