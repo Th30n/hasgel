@@ -1,5 +1,6 @@
 module Main ( main ) where
 
+import Control.Exception (bracket)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Word (Word32)
@@ -15,20 +16,21 @@ import qualified Hasgel.SDL.Events as MySDL
 
 main :: IO ()
 main =
-  MySDL.withInit [MySDL.InitVideo] $ createDisplay >>=
-    (\d -> do
-      Program program <- compileShaders
-      allocaArray 1 $ \vaoPtr -> do
-        glGenVertexArrays 1 vaoPtr
-        vao <- peekArray 1 vaoPtr
-        glBindVertexArray $ head vao
-        glUseProgram program
-        current <- SDL.getTicks
-        loop World { loopState = Continue, display = d,
-                     currentTime = current }
-        glDeleteVertexArrays 1 vaoPtr
-      glDeleteProgram program
-      destroyDisplay d)
+  MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
+    Program program <- compileShaders
+    allocaArray 1 $ \vaoPtr -> do
+      glGenVertexArrays 1 vaoPtr
+      vao <- peekArray 1 vaoPtr
+      glBindVertexArray $ head vao
+      glUseProgram program
+      current <- SDL.getTicks
+      loop World { loopState = Continue, display = d,
+                   currentTime = current }
+      glDeleteVertexArrays 1 vaoPtr
+    glDeleteProgram program
+
+withDisplay :: (Display -> IO a) -> IO a
+withDisplay = bracket createDisplay destroyDisplay
 
 data LoopState = Continue | Quit
 

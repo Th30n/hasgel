@@ -124,7 +124,7 @@ createWindow title rect flags = do
           SDL.createWindow t x y (width rect) (height rect) bits
 
 -- | This function destroys the window.
-destroyWindow :: Window -> IO ()
+destroyWindow :: MonadIO m => Window -> m ()
 destroyWindow = SDL.destroyWindow
 
 type GLContext = SDL.GLContext
@@ -140,7 +140,7 @@ glCreateContext w = do
   return c
 
 -- | Deletes an OpenGL context.
-glDeleteContext :: GLContext -> IO ()
+glDeleteContext :: MonadIO m => GLContext -> m ()
 glDeleteContext = SDL.glDeleteContext
 
 -- | Sets the OpenGL context major and minor version.
@@ -209,5 +209,5 @@ glSetContextFlags flags = do
   when (r /= 0) $ getError >>= fail
 
 -- | This function is used for updating a window with OpenGL rendering.
-glSwapWindow :: Window -> IO ()
+glSwapWindow :: MonadIO m => Window -> m ()
 glSwapWindow = SDL.glSwapWindow
