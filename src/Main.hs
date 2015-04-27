@@ -1,8 +1,11 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Main ( main ) where
 
-import Control.Exception (bracket)
-import Control.Monad (when)
-import Control.Monad.IO.Class (MonadIO (..))
+import Control.Exception (Exception, bracket, throw)
+
+
+import Control.Monad.State
+import Data.Typeable (Typeable)
 import Data.Word (Word32)
 import Foreign.Marshal.Array (allocaArray, peekArray, withArray)
 import Graphics.GL.Core45
@@ -24,15 +27,15 @@ main =
       glBindVertexArray $ head vao
       glUseProgram program
       current <- SDL.getTicks
-      loop World { loopState = Continue, display = d,
-                   currentTime = current }
+      void $ execStateT loop World { loopState = Continue, display = d,
+                                     currentTime = current }
       glDeleteVertexArrays 1 vaoPtr
     glDeleteProgram program
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
 
-data LoopState = Continue | Quit
+data LoopState = Continue | Quit deriving (Eq, Show)
 
 data WorldState = World
   { loopState :: LoopState
@@ -40,11 +43,16 @@ data WorldState = World
   , currentTime :: Word32 -- ^ Time in milliseconds
   }
 
-loop :: MonadIO m => WorldState -> m ()
-loop curw = case loopState curw of
-  Continue -> do
-    event <- liftIO MySDL.pollEvent
-    let w = maybe curw (handleEvent curw) event
+newtype MyError = MyError String deriving (Show, Typeable)
+instance Exception MyError
+
+loop :: (MonadIO m, MonadState WorldState m) => m ()
+loop = do
+  ls <- gets loopState
+  when (ls /= Quit) $ do
+    event <- MySDL.pollEvent
+    mapM_ handleEvent event
+    w <- get
     liftIO . renderDisplay (display w) $ do
       let current = fromIntegral (currentTime w) / 1000
       let r = 0.5 + 0.5 * sin current
@@ -55,14 +63,16 @@ loop curw = case loopState curw of
         glVertexAttrib4fv 0 attrib
       glDrawArrays GL_TRIANGLES 0 3
       errFlag <- Hasgel.GL.getError
-      when (errFlag /= NoError) . fail $ show errFlag
-    current <- SDL.getTicks
-    loop w { currentTime = current}
-  Quit -> return ()
+      when (errFlag /= NoError) . throw . MyError $ show errFlag
+    updateTime
+    loop
 
-handleEvent :: WorldState -> MySDL.Event -> WorldState
-handleEvent w (MySDL.QuitEvent _ _) = w { loopState = Quit }
-handleEvent w _ = w
+updateTime :: (MonadIO m, MonadState WorldState m) => m ()
+updateTime = SDL.getTicks >>= \t -> modify $ \w -> w { currentTime = t }
+
+handleEvent :: MonadState WorldState m => MySDL.Event -> m ()
+handleEvent (MySDL.QuitEvent _ _) = modify $ \w ->  w { loopState = Quit }
+handleEvent _ = return ()
 
 compileShaders :: MonadIO m => m Program
 compileShaders = do

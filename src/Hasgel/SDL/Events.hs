@@ -7,6 +7,7 @@ module Hasgel.SDL.Events (
   pollEvent,
 ) where
 
+import Control.Monad.IO.Class (MonadIO (..))
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Storable (peek)
 
@@ -21,8 +22,8 @@ type Event = SDL.Event
 --
 -- This function implicitly calls SDL_PumpEvents(), you can only call this
 -- function in the thread that set the video mode.
-pollEvent :: IO (Maybe Event)
-pollEvent = alloca $ \e -> do
+pollEvent :: MonadIO m => m (Maybe Event)
+pollEvent = liftIO . alloca $ \e -> do
   r <- SDL.pollEvent e
   if r == 0 then
     return Nothing
