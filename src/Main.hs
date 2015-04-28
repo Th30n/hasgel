@@ -2,8 +2,6 @@
 module Main ( main ) where
 
 import Control.Exception (Exception, bracket, throw)
-
-
 import Control.Monad.State
 import Data.Typeable (Typeable)
 import Data.Word (Word32)

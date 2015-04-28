@@ -4,10 +4,12 @@ module Hasgel.GL (
   getProgramiv, getProgramInfoLog
 ) where
 
+import Control.Exception (Exception, throwIO)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>))
+import Data.Typeable (Typeable)
 import Foreign.C.String (peekCString, withCAString)
 import Foreign.Marshal (alloca, allocaArray, withArray)
 import Foreign.Ptr (nullPtr)
@@ -39,14 +41,26 @@ marshalShaderType TessEvaluationShader = GL_TESS_EVALUATION_SHADER
 marshalShaderType GeometryShader = GL_GEOMETRY_SHADER
 marshalShaderType FragmentShader = GL_FRAGMENT_SHADER
 
+newtype ShaderError = ShaderError String deriving (Show, Typeable)
+instance Exception ShaderError
+
+newtype CompileError = CompileError String deriving (Show, Typeable)
+instance Exception CompileError
+
+newtype ProgramError = ProgramError String deriving (Show, Typeable)
+instance Exception ProgramError
+
+newtype LinkError = LinkError String deriving (Show, Typeable)
+instance Exception LinkError
+
 -- | Creates shader object of given type and compiles it with given source.
 -- Shader object must be deleted after use.
--- Returns error message on failure.
+-- Throws 'CompileError' or 'ShaderError' on failure.
 compileShader :: MonadIO m => String -> ShaderType -> m Shader
 compileShader source shaderType = do
   shader <- glCreateShader $ marshalShaderType shaderType
-  when (shader == 0) .
-    fail $ "Error creating shader of type " <> show shaderType
+  when (shader == 0) $ liftIO .
+    throwIO . ShaderError $ "Error creating shader of type " <> show shaderType
   liftIO . withCAString source $ \str ->
     withArray [str] $ \srcArray -> glShaderSource shader 1 srcArray nullPtr
   glCompileShader shader
@@ -54,7 +68,7 @@ compileShader source shaderType = do
   when (status == GL_FALSE) $ do
     compileLog <- getShaderInfoLog $ Shader shader
     glDeleteShader shader
-    fail compileLog
+    liftIO . throwIO $ CompileError compileLog
   return $ Shader shader
 
 -- | Returns the information log for a shader object.
@@ -73,18 +87,18 @@ getShaderiv (Shader shader) pname =
     peek params
 
 -- | Creates a program object and links it with compiled shader objects.
--- Returns error message on failure.
+-- Throws 'ProgramError' or 'LinkError' on failure.
 linkProgram :: MonadIO m => [Shader] -> m Program
 linkProgram ss = do
   program <- glCreateProgram
-  when (program == 0) $ fail "Error creating program."
+  when (program == 0) . liftIO . throwIO $ ProgramError "Error creating program."
   mapM_ (\(Shader sh) -> glAttachShader program sh) ss
   glLinkProgram program
   status <- getProgramiv (Program program) GL_LINK_STATUS
   when (status == GL_FALSE) $ do
     linkLog <- getProgramInfoLog $ Program program
     glDeleteProgram program
-    fail linkLog
+    liftIO . throwIO $ LinkError linkLog
   return $ Program program
 
 -- | Returns the information log for a program object.

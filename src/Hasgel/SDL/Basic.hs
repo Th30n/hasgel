@@ -6,15 +6,17 @@ module Hasgel.SDL.Basic (
   InitFlag(..), withInit,
   init, initSubSystem, quit, quitSubSystem, setMainReady, wasInit,
   -- * Error handling
+  InitializationError(..), WindowError(..), GLError(..),
   clearError, getError
 ) where
 
 
-import Control.Exception (bracket_)
+import Control.Exception (Exception, throw, bracket_)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
 import Data.Monoid ((<>))
+import Data.Typeable (Typeable)
 import Data.Word (Word32)
 import Foreign.C.String (peekCString)
 import Foreign.C.Types (CInt)
@@ -70,7 +72,7 @@ unmarshalInitFlag x
 
 -- | Initializes SDL, performs the action and quits SDL.
 -- Cleanup is performed also in case of an exception.
-withInit :: (MonadIO m, MonadBaseControl IO m) => [InitFlag] -> m a -> m a
+withInit :: (MonadBaseControl IO m) => [InitFlag] -> m a -> m a
 withInit flags = liftBaseOp_ $ bracket_ (init flags) quit
 
 -- | This function is used to initialize the SDL library.
@@ -90,7 +92,7 @@ initWithFun f flags = do
   r <- f $ createBitFlags flags
   unless (r == 0) $ do
     errMsg <- getError
-    fail $ "SDL initialization error (" <> show r <>"): " <> errMsg
+    throw . InitializationError $ show r <> " : " <> errMsg
 
 -- | Cleans up all initialized subsystems.
 -- It should be called upon all exit conditions even if you have
@@ -123,6 +125,16 @@ wasInit :: MonadIO m => [InitFlag] -> m [InitFlag]
 wasInit mask = do
   ss <- SDL.wasInit $ createBitFlags mask
   return $ fromBitFlags ss
+
+newtype InitializationError = InitializationError String
+  deriving (Show, Typeable)
+instance Exception InitializationError
+
+newtype GLError = GLError String deriving (Show, Typeable)
+instance Exception GLError
+
+newtype WindowError = WindowError String deriving (Show, Typeable)
+instance Exception WindowError
 
 -- | Returns the error message of last error or empty string if no error.
 -- The error message is then cleared from SDL.
