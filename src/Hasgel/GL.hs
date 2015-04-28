@@ -1,7 +1,8 @@
 module Hasgel.GL (
-  Shader(..), Program(..), ShaderType(..), ErrorFlag(..),
-  compileShader, linkProgram, getError, getShaderiv, getShaderInfoLog,
-  getProgramiv, getProgramInfoLog
+  Shader(..), Program(..), ShaderType(..), ShaderError(..), CompileError(..),
+  ProgramError(..), LinkError(..), ErrorFlag(..),
+  compileShader, linkProgram, getError, throwError, getShaderiv,
+  getShaderInfoLog, getProgramiv, getProgramInfoLog
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -126,7 +127,8 @@ data ErrorFlag =
   | OutOfMemory
   | StackUnderflow
   | StackOverflow
-  deriving (Show, Eq)
+  deriving (Show, Eq, Typeable)
+instance Exception ErrorFlag
 
 -- | Converts from numerical representation to 'ErrorFlag'
 unmarshalErrorFlag :: GLenum -> Maybe ErrorFlag
@@ -143,3 +145,7 @@ unmarshalErrorFlag val
 -- | Returns 'ErrorFlag'.
 getError :: MonadIO m => m ErrorFlag
 getError = (fromMaybe NoError . unmarshalErrorFlag) <$> glGetError
+
+-- | Throws an 'ErrorFlag' on error.
+throwError :: MonadIO m => m ()
+throwError = getError >>= \e -> when (e /= NoError) $ liftIO $ throwIO e

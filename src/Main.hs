@@ -1,9 +1,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Main ( main ) where
 
-import Control.Exception (Exception, bracket, throw)
+import Control.Exception (bracket)
 import Control.Monad.State
-import Data.Typeable (Typeable)
+
 import Data.Word (Word32)
 import Foreign.Marshal.Array (allocaArray, peekArray, withArray)
 import Graphics.GL.Core45
@@ -41,9 +41,6 @@ data WorldState = World
   , currentTime :: Word32 -- ^ Time in milliseconds
   }
 
-newtype MyError = MyError String deriving (Show, Typeable)
-instance Exception MyError
-
 loop :: (MonadIO m, MonadState WorldState m) => m ()
 loop = do
   ls <- gets loopState
@@ -60,8 +57,7 @@ loop = do
       withArray [0.5 * sin current, 0.6 * cos current, 0.0, 0.0] $ \attrib ->
         glVertexAttrib4fv 0 attrib
       glDrawArrays GL_TRIANGLES 0 3
-      errFlag <- Hasgel.GL.getError
-      when (errFlag /= NoError) . throw . MyError $ show errFlag
+      throwError
     updateTime
     loop
 
