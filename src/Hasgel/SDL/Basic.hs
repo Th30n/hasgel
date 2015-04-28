@@ -11,7 +11,7 @@ module Hasgel.SDL.Basic (
 ) where
 
 
-import Control.Exception (Exception, throw, bracket_)
+import Control.Exception (Exception, throwIO, bracket_)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
@@ -92,7 +92,7 @@ initWithFun f flags = do
   r <- f $ createBitFlags flags
   unless (r == 0) $ do
     errMsg <- getError
-    throw . InitializationError $ show r <> " : " <> errMsg
+    liftIO . throwIO . InitializationError $ show r <> " : " <> errMsg
 
 -- | Cleans up all initialized subsystems.
 -- It should be called upon all exit conditions even if you have
