@@ -1,6 +1,6 @@
 module Hasgel.GL (
-  Shader(..), Program(..), ShaderType(..), ShaderError(..), CompileError(..),
-  ProgramError(..), LinkError(..), ErrorFlag(..),
+  Shader(..), Program(..), ShaderType(..),
+  ShaderException(..), GLError(..),
   compileShader, linkProgram, getError, throwError, getShaderiv,
   getShaderInfoLog, getProgramiv, getProgramInfoLog
 ) where
@@ -42,26 +42,22 @@ marshalShaderType TessEvaluationShader = GL_TESS_EVALUATION_SHADER
 marshalShaderType GeometryShader = GL_GEOMETRY_SHADER
 marshalShaderType FragmentShader = GL_FRAGMENT_SHADER
 
-newtype ShaderError = ShaderError String deriving (Show, Typeable)
-instance Exception ShaderError
+data ShaderException =
+  CreationError String |
+  CompileError String |
+  LinkError String
+  deriving (Eq, Show, Typeable)
 
-newtype CompileError = CompileError String deriving (Show, Typeable)
-instance Exception CompileError
-
-newtype ProgramError = ProgramError String deriving (Show, Typeable)
-instance Exception ProgramError
-
-newtype LinkError = LinkError String deriving (Show, Typeable)
-instance Exception LinkError
+instance Exception ShaderException
 
 -- | Creates shader object of given type and compiles it with given source.
 -- Shader object must be deleted after use.
--- Throws 'CompileError' or 'ShaderError' on failure.
+-- Throws 'CompileError' or 'CreationError' on failure.
 compileShader :: MonadIO m => String -> ShaderType -> m Shader
 compileShader source shaderType = do
   shader <- glCreateShader $ marshalShaderType shaderType
-  when (shader == 0) $ liftIO .
-    throwIO . ShaderError $ "Error creating shader of type " <> show shaderType
+  when (shader == 0) $ liftIO .  throwIO .
+    CreationError $ "Error creating shader of type " <> show shaderType
   liftIO . withCAString source $ \str ->
     withArray [str] $ \srcArray -> glShaderSource shader 1 srcArray nullPtr
   glCompileShader shader
@@ -92,7 +88,8 @@ getShaderiv (Shader shader) pname =
 linkProgram :: MonadIO m => [Shader] -> m Program
 linkProgram ss = do
   program <- glCreateProgram
-  when (program == 0) . liftIO . throwIO $ ProgramError "Error creating program."
+  when (program == 0) . liftIO . throwIO $
+    CreationError "Error creating program."
   mapM_ (\(Shader sh) -> glAttachShader program sh) ss
   glLinkProgram program
   status <- getProgramiv (Program program) GL_LINK_STATUS
@@ -118,7 +115,7 @@ getProgramiv (Program program) pname =
     peek params
 
 -- | Enumeration of possible error codes in OpenGL.
-data ErrorFlag =
+data GLError =
   NoError
   | InvalidEnum
   | InvalidValue
@@ -128,11 +125,11 @@ data ErrorFlag =
   | StackUnderflow
   | StackOverflow
   deriving (Show, Eq, Typeable)
-instance Exception ErrorFlag
+instance Exception GLError
 
--- | Converts from numerical representation to 'ErrorFlag'
-unmarshalErrorFlag :: GLenum -> Maybe ErrorFlag
-unmarshalErrorFlag val
+-- | Converts from numerical representation to 'GLError'
+unmarshalGLError :: GLenum -> Maybe GLError
+unmarshalGLError val
   | val == GL_NO_ERROR = Just NoError
   | val == GL_INVALID_ENUM = Just InvalidEnum
   | val == GL_INVALID_OPERATION = Just InvalidOperation
@@ -142,10 +139,10 @@ unmarshalErrorFlag val
   | val == GL_STACK_OVERFLOW = Just StackOverflow
   | otherwise = Nothing
 
--- | Returns 'ErrorFlag'.
-getError :: MonadIO m => m ErrorFlag
-getError = (fromMaybe NoError . unmarshalErrorFlag) <$> glGetError
+-- | Returns 'GLError'.
+getError :: MonadIO m => m GLError
+getError = (fromMaybe NoError . unmarshalGLError) <$> glGetError
 
--- | Throws an 'ErrorFlag' on error.
+-- | Throws an 'GLError' on error.
 throwError :: MonadIO m => m ()
 throwError = getError >>= \e -> when (e /= NoError) $ liftIO $ throwIO e

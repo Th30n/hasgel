@@ -6,14 +6,14 @@ module Hasgel.SDL.Basic (
   InitFlag(..), withInit,
   init, initSubSystem, quit, quitSubSystem, setMainReady, wasInit,
   -- * Error handling
-  InitializationError(..), WindowError(..), GLError(..),
+  SDLException(..),
   clearError, getError
 ) where
 
 
-import Control.Exception (Exception, throwIO, bracket_)
+import Control.Exception (Exception, bracket_, throwIO)
 import Control.Monad (unless)
-import Control.Monad.IO.Class (MonadIO(..))
+import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
 import Data.Monoid ((<>))
 import Data.Typeable (Typeable)
@@ -126,15 +126,13 @@ wasInit mask = do
   ss <- SDL.wasInit $ createBitFlags mask
   return $ fromBitFlags ss
 
-newtype InitializationError = InitializationError String
-  deriving (Show, Typeable)
-instance Exception InitializationError
+data SDLException =
+  InitializationError String |
+  GLError String |
+  WindowError String
+  deriving (Eq, Show, Typeable)
 
-newtype GLError = GLError String deriving (Show, Typeable)
-instance Exception GLError
-
-newtype WindowError = WindowError String deriving (Show, Typeable)
-instance Exception WindowError
+instance Exception SDLException
 
 -- | Returns the error message of last error or empty string if no error.
 -- The error message is then cleared from SDL.
