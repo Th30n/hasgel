@@ -247,10 +247,7 @@ loadBMP :: MonadIO m => FilePath -> m Surface
 loadBMP file = do
   sPtr <- liftIO $ withCString file SDL.loadBMP
   throwIfNull sPtr SDLError
-  s <- fromSurfacePtr sPtr
-  converted <- convertSurfaceFormat s SDL.SDL_PIXELFORMAT_ABGR8888
-  freeSurface s
-  pure converted
+  fromSurfacePtr sPtr
 
 type PixelFormatEnum = Word32
 

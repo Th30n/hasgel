@@ -88,8 +88,6 @@ type Texture = GLuint
 loadTexture :: MonadIO m => FilePath -> m Texture
 loadTexture file = do
   s <- MySDL.loadBMP file
-  liftIO . putStrLn $ show s
-  liftIO . putStrLn $ show SDL.SDL_PIXELFORMAT_RGBA8888
   liftIO . allocaArray 1 $ \texPtr -> do
     glGenTextures 1 texPtr
     tex <- peekArray 1 texPtr
@@ -97,8 +95,8 @@ loadTexture file = do
     let w = fromIntegral $ MySDL.surfaceW s
         h = fromIntegral $ MySDL.surfaceH s
         pixels = MySDL.surfacePixels s
-    glTexImage2D GL_TEXTURE_2D 0 GL_RGBA  w h 0 GL_RGBA GL_UNSIGNED_BYTE pixels
-    glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_LINEAR
-    glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_LINEAR
+    glTexImage2D GL_TEXTURE_2D 0 GL_RGB w h 0 GL_BGR GL_UNSIGNED_BYTE pixels
+    glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_NEAREST
+    glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_NEAREST
     MySDL.freeSurface s
     pure $ head tex
