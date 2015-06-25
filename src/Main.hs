@@ -7,6 +7,7 @@ import Control.Monad.State
 import Data.Word (Word32)
 import Foreign.Marshal.Array (allocaArray, peekArray, withArray)
 import Graphics.GL.Core45
+import Graphics.GL.Types
 import qualified Graphics.UI.SDL as SDL
 import Prelude
 
@@ -14,10 +15,13 @@ import Hasgel.Display
 import Hasgel.GL
 import qualified Hasgel.SDL.Basic as MySDL
 import qualified Hasgel.SDL.Events as MySDL
+import qualified Hasgel.SDL.Video as MySDL
 
 main :: IO ()
 main =
   MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
+    glActiveTexture GL_TEXTURE0
+    tex <- loadTexture "share/gfx/checker.bmp"
     Program program <- compileShaders
     allocaArray 1 $ \vaoPtr -> do
       glGenVertexArrays 1 vaoPtr
@@ -78,3 +82,23 @@ compileShaders = do
   glDeleteShader $ (\(Shader sh) -> sh) vs
   glDeleteShader $ (\(Shader sh) -> sh) fs
   return program
+
+type Texture = GLuint
+
+loadTexture :: MonadIO m => FilePath -> m Texture
+loadTexture file = do
+  s <- MySDL.loadBMP file
+  liftIO . putStrLn $ show s
+  liftIO . putStrLn $ show SDL.SDL_PIXELFORMAT_RGBA8888
+  liftIO . allocaArray 1 $ \texPtr -> do
+    glGenTextures 1 texPtr
+    tex <- peekArray 1 texPtr
+    glBindTexture GL_TEXTURE_2D $ head tex
+    let w = fromIntegral $ MySDL.surfaceW s
+        h = fromIntegral $ MySDL.surfaceH s
+        pixels = MySDL.surfacePixels s
+    glTexImage2D GL_TEXTURE_2D 0 GL_RGBA  w h 0 GL_RGBA GL_UNSIGNED_BYTE pixels
+    glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_LINEAR
+    glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_LINEAR
+    MySDL.freeSurface s
+    pure $ head tex

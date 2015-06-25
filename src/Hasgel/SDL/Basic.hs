@@ -129,7 +129,8 @@ wasInit mask = do
 data SDLException =
   InitializationError String |
   GLError String |
-  WindowError String
+  WindowError String |
+  SDLError String
   deriving (Eq, Show, Typeable)
 
 instance Exception SDLException

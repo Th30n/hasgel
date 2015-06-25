@@ -3,20 +3,23 @@
 module Hasgel.SDL.Video (
   -- * Data types and enumerations
   WindowPos(..), WindowRectangle(..), WindowFlag(..), Window,
-  GLContext, GLContextFlag(..), GLContextProfile(..),
+  GLContext, GLContextFlag(..), GLContextProfile(..), Surface,
   -- * Functions
   createWindow, destroyWindow, glCreateContext, glDeleteContext,
   glSetContextVersion, glSetContextFlags, glSetContextProfile,
-  glSwapWindow, loadBMP, freeSurface
+  glSwapWindow, loadBMP, freeSurface, surfaceW, surfaceH, surfacePixels,
+  convertSurfaceFormat
 ) where
 
 
 import Control.Exception (Exception, throwIO)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
+import Data.Word (Word32)
 import Foreign.C.String (withCString)
 import Foreign.C.Types (CInt)
 import Foreign.Ptr (Ptr, nullPtr)
+import Foreign.Storable (peek)
 
 import qualified Graphics.UI.SDL as SDL
 
@@ -219,13 +222,43 @@ glSetContextFlags flags = do
 glSwapWindow :: MonadIO m => Window -> m ()
 glSwapWindow = SDL.glSwapWindow
 
-newtype Surface = Surface (Ptr SDL.Surface)
+data Surface = Surface {
+  surfacePtr :: Ptr SDL.Surface,
+  surface :: SDL.Surface,
+  surfaceFormat :: SDL.PixelFormat
+  } deriving (Show)
+
+surfaceW :: Surface -> Int
+surfaceW (Surface _ s _) = fromIntegral $ SDL.surfaceW s
+
+surfaceH :: Surface -> Int
+surfaceH (Surface _ s _) = fromIntegral $ SDL.surfaceH s
+
+surfacePixels :: Surface -> Ptr ()
+surfacePixels (Surface _ s _ ) = SDL.surfacePixels s
+
+fromSurfacePtr :: MonadIO m => Ptr SDL.Surface -> m Surface
+fromSurfacePtr ptr = do
+  s <- liftIO $ peek ptr
+  format <- liftIO . peek $ SDL.surfaceFormat s
+  pure $ Surface ptr s format
 
 loadBMP :: MonadIO m => FilePath -> m Surface
 loadBMP file = do
-  s <- liftIO $ withCString file SDL.loadBMP
-  throwIfNull s InitializationError
-  pure . Surface $ s
+  sPtr <- liftIO $ withCString file SDL.loadBMP
+  throwIfNull sPtr SDLError
+  s <- fromSurfacePtr sPtr
+  converted <- convertSurfaceFormat s SDL.SDL_PIXELFORMAT_ABGR8888
+  freeSurface s
+  pure converted
+
+type PixelFormatEnum = Word32
+
+convertSurfaceFormat :: MonadIO m => Surface -> PixelFormatEnum -> m Surface
+convertSurfaceFormat (Surface ptr _ _) format = do
+  sPtr <- SDL.convertSurfaceFormat ptr format 0
+  throwIfNull sPtr SDLError
+  fromSurfacePtr sPtr
 
 freeSurface :: MonadIO m => Surface -> m ()
-freeSurface (Surface s) = SDL.freeSurface s
+freeSurface (Surface ptr _ _) = SDL.freeSurface ptr

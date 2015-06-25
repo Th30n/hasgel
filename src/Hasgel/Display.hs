@@ -1,6 +1,6 @@
 -- | Provides access to rendering display
 module Hasgel.Display (
-  Display,
+  Display(..),
   renderDisplay,
   destroyDisplay,
   createDisplay,
