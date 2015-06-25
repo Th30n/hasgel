@@ -7,7 +7,7 @@ module Hasgel.SDL.Video (
   -- * Functions
   createWindow, destroyWindow, glCreateContext, glDeleteContext,
   glSetContextVersion, glSetContextFlags, glSetContextProfile,
-  glSwapWindow
+  glSwapWindow, loadBMP, freeSurface
 ) where
 
 
@@ -218,3 +218,14 @@ glSetContextFlags flags = do
 -- | This function is used for updating a window with OpenGL rendering.
 glSwapWindow :: MonadIO m => Window -> m ()
 glSwapWindow = SDL.glSwapWindow
+
+newtype Surface = Surface (Ptr SDL.Surface)
+
+loadBMP :: MonadIO m => FilePath -> m Surface
+loadBMP file = do
+  s <- liftIO $ withCString file SDL.loadBMP
+  throwIfNull s InitializationError
+  pure . Surface $ s
+
+freeSurface :: MonadIO m => Surface -> m ()
+freeSurface (Surface s) = SDL.freeSurface s
