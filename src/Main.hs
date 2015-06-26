@@ -5,9 +5,8 @@ import Control.Exception (bracket)
 import Control.Monad.State
 
 import Data.Word (Word32)
-import Foreign.Marshal.Array (allocaArray, peekArray, withArray)
+import Foreign.Marshal.Array (withArray)
 import Graphics.GL.Core45
-import Graphics.GL.Types
 import qualified Graphics.UI.SDL as SDL
 import Prelude
 
@@ -22,14 +21,12 @@ main =
   MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
     glActiveTexture GL_TEXTURE0
     res <- loadResources
-    allocaArray 1 $ \vaoPtr -> do
-      glGenVertexArrays 1 vaoPtr
-      vao <- peekArray 1 vaoPtr
-      glBindVertexArray $ head vao
-      current <- SDL.getTicks
-      void $ execStateT loop World { loopState = Continue, display = d,
-                                     currentTime = current, resources = res }
-      glDeleteVertexArrays 1 vaoPtr
+    vao <- gen :: IO VertexArray
+    glBindVertexArray $ object vao
+    current <- SDL.getTicks
+    void $ execStateT loop World { loopState = Continue, display = d,
+                                   currentTime = current, resources = res }
+    delete vao
     freeResources res
 
 withDisplay :: (Display -> IO a) -> IO a
@@ -51,9 +48,10 @@ loadResources = do
     pure $ Resources tex program axis
 
 freeResources :: MonadIO m => Resources -> m ()
-freeResources (Resources _ (Program prog) (Program axis)) = do
-  glDeleteProgram prog
-  glDeleteProgram axis
+freeResources res = do
+  delete $ texture res
+  delete $ mainProgram res
+  delete $ axisProgram res
 
 data LoopState = Continue | Quit deriving (Eq, Show)
 
@@ -99,26 +97,22 @@ compileProgram :: MonadIO m => [(FilePath, ShaderType)] -> m Program
 compileProgram files = do
   shaders <- mapM readShader files
   program <- linkProgram shaders
-  mapM_ (\(Shader sh) -> glDeleteShader sh) shaders
+  deletes shaders
   pure program
   where readShader (file, shaderType) = do
           src <- liftIO $ readFile file
           compileShader src shaderType
 
-type Texture = GLuint
-
 loadTexture :: MonadIO m => FilePath -> m Texture
 loadTexture file = do
   s <- MySDL.loadBMP file
-  liftIO . allocaArray 1 $ \texPtr -> do
-    glGenTextures 1 texPtr
-    tex <- peekArray 1 texPtr
-    glBindTexture GL_TEXTURE_2D $ head tex
-    let w = fromIntegral $ MySDL.surfaceW s
-        h = fromIntegral $ MySDL.surfaceH s
-        pixels = MySDL.surfacePixels s
-    glTexImage2D GL_TEXTURE_2D 0 GL_RGB w h 0 GL_BGR GL_UNSIGNED_BYTE pixels
-    glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_NEAREST
-    glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_NEAREST
-    MySDL.freeSurface s
-    pure $ head tex
+  tex <- gen
+  glBindTexture GL_TEXTURE_2D $ object tex
+  let w = fromIntegral $ MySDL.surfaceW s
+      h = fromIntegral $ MySDL.surfaceH s
+      pixels = MySDL.surfacePixels s
+  glTexImage2D GL_TEXTURE_2D 0 GL_RGB w h 0 GL_BGR GL_UNSIGNED_BYTE pixels
+  glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_NEAREST
+  glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_NEAREST
+  MySDL.freeSurface s
+  pure tex
