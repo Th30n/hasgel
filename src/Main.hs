@@ -6,6 +6,7 @@ module Main ( main ) where
 import Control.Exception (bracket)
 import Control.Monad.State
 
+import Data.Maybe (fromJust)
 import Data.Word (Word32)
 import Foreign (nullPtr)
 import Graphics.GL.Core45
@@ -89,7 +90,8 @@ loop = do
           r = 0.5 + 0.5 * sin current
           g = 0.5 + 0.5 * cos current
       clearBufferfv GL_COLOR 0 [r, g, 0, 1]
-      vertexAttrib4f (Index 1) (0.5 * sin current) (0.6 * cos current) 0 0
+      loc <- getUniformLocation (mainProgram res) "offset"
+      uniform4f (fromJust loc) (0.5 * sin current) (0.6 * cos current) 0 0
       glDrawArrays GL_TRIANGLES 0 3
       useProgram $ axisProgram res
       glDrawArrays GL_LINES 0 6

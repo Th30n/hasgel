@@ -7,7 +7,8 @@ module Hasgel.GL (
   VertexArray, Texture, Index(..), Buffer, BufferData(..),
   linkProgram, getError, throwError,
   getProgramiv, getProgramInfoLog, useProgram,
-  vertexAttrib4f, clearBufferfv, bufferData
+  vertexAttrib4f, clearBufferfv, bufferData,
+  getUniformLocation, uniform4f
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -17,7 +18,7 @@ import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import Foreign (Ptr, Storable (..), alloca, allocaArray, castPtr, nullPtr, peek,
                 peekArray, with, withArray, withArrayLen)
-import Foreign.C (peekCString)
+import Foreign.C (peekCString, withCAString)
 import Graphics.GL.Core45
 import Graphics.GL.Types
 
@@ -173,3 +174,16 @@ bufferData :: (MonadIO m, BufferData a) =>
 bufferData target values usage =
   let bytes = fromIntegral $ sizeOfData values
   in withDataPtr values $ \ptr -> glBufferData target bytes ptr usage
+
+
+newtype UniformLocation = UniformLocation GLint
+
+getUniformLocation :: MonadIO m => Program -> String -> m (Maybe UniformLocation)
+getUniformLocation program name =
+  liftIO . withCAString name $ \ptr -> do
+    loc <- glGetUniformLocation (object program) ptr
+    pure $ if loc == -1 then Nothing else Just $ UniformLocation loc
+
+uniform4f :: MonadIO m => UniformLocation ->
+             GLfloat -> GLfloat -> GLfloat -> GLfloat -> m ()
+uniform4f (UniformLocation loc) = glUniform4f loc
