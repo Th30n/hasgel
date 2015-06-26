@@ -1,4 +1,6 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 -- | This module corresponds to SDL 2.0 Basics category
 -- on official documentation wiki.
 module Hasgel.SDL.Basic (

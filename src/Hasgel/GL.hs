@@ -2,9 +2,10 @@ module Hasgel.GL (
   module Hasgel.GL.Object,
   module Hasgel.GL.Shader,
   Program(..), GLError(..),
-  VertexArray, Texture,
+  VertexArray, Texture, Index(..), Buffer,
   linkProgram, getError, throwError,
-  getProgramiv, getProgramInfoLog, useProgram
+  getProgramiv, getProgramInfoLog, useProgram,
+  vertexAttrib4f, clearBufferfv, bufferData
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -12,8 +13,8 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
-import Foreign (alloca, allocaArray, nullPtr, peek, peekArray, with,
-                withArrayLen)
+import Foreign (Storable (..), alloca, allocaArray, castPtr, nullPtr, peek,
+                peekArray, with, withArray, withArrayLen)
 import Foreign.C (peekCString)
 import Graphics.GL.Core45
 import Graphics.GL.Types
@@ -42,7 +43,7 @@ attachShader :: MonadIO m => Program -> Shader -> m ()
 attachShader (Program prog) (Shader sh) = glAttachShader prog sh
 
 -- | Creates a program object and links it with compiled shader objects.
--- Throws 'ProgramError' or 'LinkError' on failure.
+-- Throws 'CreationError' or 'LinkError' on failure.
 linkProgram :: MonadIO m => [Shader] -> m Program
 linkProgram ss = do
   program <- gen
@@ -128,3 +129,38 @@ instance Gen Texture where
   gens n = liftIO . allocaArray n $ \texPtr -> do
     glGenTextures (fromIntegral n) texPtr
     map Texture <$> peekArray n texPtr
+
+newtype Index = Index GLuint deriving (Show)
+
+vertexAttrib4f :: MonadIO m => Index ->
+                  GLfloat -> GLfloat -> GLfloat -> GLfloat -> m ()
+vertexAttrib4f (Index index) = glVertexAttrib4f index
+
+type ClearBuffer = GLenum
+type DrawBuffer = GLint
+
+clearBufferfv :: MonadIO m => ClearBuffer -> DrawBuffer -> [GLfloat] -> m ()
+clearBufferfv buffer drawBuffer values =
+  liftIO . withArray values $ \ptr ->
+    glClearBufferfv buffer drawBuffer ptr
+
+newtype Buffer = Buffer GLuint deriving (Show)
+
+instance Object Buffer where
+  object (Buffer obj) = obj
+  delete (Buffer obj) = liftIO . with obj $ glDeleteBuffers 1
+
+instance Gen Buffer where
+  gens n = liftIO . allocaArray n $ \ptr -> do
+    glGenBuffers (fromIntegral n) ptr
+    map Buffer <$> peekArray n ptr
+
+type BufferTarget = GLenum
+type BufferUsage = GLenum
+
+bufferData :: (MonadIO m, Storable a) =>
+              BufferTarget -> [a] -> BufferUsage -> m ()
+bufferData target values usage =
+  liftIO . withArrayLen values $ \len ptr ->
+    let bytes = fromIntegral $ len * sizeOf (head values)
+    in glBufferData target bytes (castPtr ptr) usage
