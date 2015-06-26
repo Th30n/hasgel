@@ -1,8 +1,10 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Hasgel.GL (
   module Hasgel.GL.Object,
   module Hasgel.GL.Shader,
   Program(..), GLError(..),
-  VertexArray, Texture, Index(..), Buffer,
+  VertexArray, Texture, Index(..), Buffer, BufferData(..),
   linkProgram, getError, throwError,
   getProgramiv, getProgramInfoLog, useProgram,
   vertexAttrib4f, clearBufferfv, bufferData
@@ -13,7 +15,7 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
-import Foreign (Storable (..), alloca, allocaArray, castPtr, nullPtr, peek,
+import Foreign (Ptr, Storable (..), alloca, allocaArray, castPtr, nullPtr, peek,
                 peekArray, with, withArray, withArrayLen)
 import Foreign.C (peekCString)
 import Graphics.GL.Core45
@@ -158,9 +160,16 @@ instance Gen Buffer where
 type BufferTarget = GLenum
 type BufferUsage = GLenum
 
-bufferData :: (MonadIO m, Storable a) =>
-              BufferTarget -> [a] -> BufferUsage -> m ()
+class BufferData a where
+  withDataPtr :: (BufferData a, MonadIO m) => a -> (Ptr () -> IO b) -> m b
+  sizeOfData :: BufferData a => a -> Int
+
+instance Storable a => BufferData [a] where
+  withDataPtr vs action = liftIO . withArray vs $ action . castPtr
+  sizeOfData vs = length vs * sizeOf (undefined :: a)
+
+bufferData :: (MonadIO m, BufferData a) =>
+              BufferTarget -> a -> BufferUsage -> m ()
 bufferData target values usage =
-  liftIO . withArrayLen values $ \len ptr ->
-    let bytes = fromIntegral $ len * sizeOf (head values)
-    in glBufferData target bytes (castPtr ptr) usage
+  let bytes = fromIntegral $ sizeOfData values
+  in withDataPtr values $ \ptr -> glBufferData target bytes ptr usage

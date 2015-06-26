@@ -27,5 +27,6 @@ executable hasgel
     , mtl >= 2.2
     , sdl2 >= 1.3
     , transformers >= 0.3
+    , linear >= 1.18
   default-language: Haskell2010
   ghc-options: -Wall -fwarn-tabs
