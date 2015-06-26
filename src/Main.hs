@@ -21,21 +21,39 @@ main :: IO ()
 main =
   MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
     glActiveTexture GL_TEXTURE0
-    tex <- loadTexture "share/gfx/checker.bmp"
-    Program program <- compileShaders
+    res <- loadResources
     allocaArray 1 $ \vaoPtr -> do
       glGenVertexArrays 1 vaoPtr
       vao <- peekArray 1 vaoPtr
       glBindVertexArray $ head vao
-      glUseProgram program
       current <- SDL.getTicks
       void $ execStateT loop World { loopState = Continue, display = d,
-                                     currentTime = current }
+                                     currentTime = current, resources = res }
       glDeleteVertexArrays 1 vaoPtr
-    glDeleteProgram program
+    freeResources res
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
+
+data Resources = Resources
+  { texture :: Texture
+  , mainProgram :: Program
+  , axisProgram :: Program
+  }
+
+loadResources :: MonadIO m => m Resources
+loadResources = do
+    tex <- loadTexture "share/gfx/checker.bmp"
+    program <- compileProgram [("shaders/basic.vert", VertexShader),
+                               ("shaders/basic.frag", FragmentShader)]
+    axis <- compileProgram [("shaders/axis.vert", VertexShader),
+                            ("shaders/axis.frag", FragmentShader)]
+    pure $ Resources tex program axis
+
+freeResources :: MonadIO m => Resources -> m ()
+freeResources (Resources _ (Program prog) (Program axis)) = do
+  glDeleteProgram prog
+  glDeleteProgram axis
 
 data LoopState = Continue | Quit deriving (Eq, Show)
 
@@ -43,6 +61,7 @@ data WorldState = World
   { loopState :: LoopState
   , display :: Display
   , currentTime :: Word32 -- ^ Time in milliseconds
+  , resources :: Resources
   }
 
 loop :: (MonadIO m, MonadState WorldState m) => m ()
@@ -53,14 +72,18 @@ loop = do
     mapM_ handleEvent event
     w <- get
     liftIO . renderDisplay (display w) $ do
+      let res = resources w
+      useProgram $ mainProgram res
       let current = fromIntegral (currentTime w) / 1000
-      let r = 0.5 + 0.5 * sin current
-      let g = 0.5 + 0.5 * cos current
+          r = 0.5 + 0.5 * sin current
+          g = 0.5 + 0.5 * cos current
       withArray [r, g, 0.0, 1.0] $ \color ->
         glClearBufferfv GL_COLOR 0 color
       withArray [0.5 * sin current, 0.6 * cos current, 0.0, 0.0] $ \attrib ->
         glVertexAttrib4fv 0 attrib
       glDrawArrays GL_TRIANGLES 0 3
+      useProgram $ axisProgram res
+      glDrawArrays GL_LINES 0 6
       throwError
     updateTime
     loop
@@ -72,16 +95,15 @@ handleEvent :: MonadState WorldState m => MySDL.Event -> m ()
 handleEvent (MySDL.QuitEvent _ _) = modify $ \w ->  w { loopState = Quit }
 handleEvent _ = return ()
 
-compileShaders :: MonadIO m => m Program
-compileShaders = do
-  vsSrc <- liftIO $ readFile "shaders/basic.vert"
-  fsSrc <- liftIO $ readFile "shaders/basic.frag"
-  vs <- compileShader vsSrc VertexShader
-  fs <- compileShader fsSrc FragmentShader
-  program <- linkProgram [vs, fs]
-  glDeleteShader $ (\(Shader sh) -> sh) vs
-  glDeleteShader $ (\(Shader sh) -> sh) fs
-  return program
+compileProgram :: MonadIO m => [(FilePath, ShaderType)] -> m Program
+compileProgram files = do
+  shaders <- mapM readShader files
+  program <- linkProgram shaders
+  mapM_ (\(Shader sh) -> glDeleteShader sh) shaders
+  pure program
+  where readShader (file, shaderType) = do
+          src <- liftIO $ readFile file
+          compileShader src shaderType
 
 type Texture = GLuint
 

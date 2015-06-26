@@ -2,7 +2,7 @@ module Hasgel.GL (
   Shader(..), Program(..), ShaderType(..),
   ShaderException(..), GLError(..),
   compileShader, linkProgram, getError, throwError, getShaderiv,
-  getShaderInfoLog, getProgramiv, getProgramInfoLog
+  getShaderInfoLog, getProgramiv, getProgramInfoLog, useProgram
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -113,6 +113,9 @@ getProgramiv (Program program) pname =
   liftIO . alloca $ \params -> do
     glGetProgramiv program pname params
     peek params
+
+useProgram :: MonadIO m => Program -> m ()
+useProgram (Program program) = glUseProgram program
 
 -- | Enumeration of possible error codes in OpenGL.
 data GLError =
