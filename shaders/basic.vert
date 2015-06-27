@@ -14,6 +14,6 @@ out VS_OUT
 void main(void)
 {
     gl_Position = proj * model * vec4(position, 1.0);
-    vs_out.tc = position.xy;
+    vs_out.tc = position.xy - 1E-5;
     vs_out.position = position;
 }
