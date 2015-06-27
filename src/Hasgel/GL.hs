@@ -7,8 +7,8 @@ module Hasgel.GL (
   VertexArray, Texture, Index(..), Buffer, BufferData(..),
   linkProgram, getError, throwError,
   getProgramiv, getProgramInfoLog, useProgram,
-  vertexAttrib4f, clearBufferfv, bufferData,
-  getUniformLocation, uniform4f
+  vertexAttrib4f, clearBufferfv, clearDepthBuffer, bufferData,
+  getUniformLocation, uniform4f, uniformMatrix4f, drawElements
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -144,8 +144,10 @@ type DrawBuffer = GLint
 
 clearBufferfv :: MonadIO m => ClearBuffer -> DrawBuffer -> [GLfloat] -> m ()
 clearBufferfv buffer drawBuffer values =
-  liftIO . withArray values $ \ptr ->
-    glClearBufferfv buffer drawBuffer ptr
+  liftIO . withArray values $ glClearBufferfv buffer drawBuffer
+
+clearDepthBuffer :: MonadIO m => GLfloat -> m ()
+clearDepthBuffer value = liftIO . with value $ glClearBufferfv GL_DEPTH 0
 
 newtype Buffer = Buffer GLuint deriving (Show)
 
@@ -187,3 +189,14 @@ getUniformLocation program name =
 uniform4f :: MonadIO m => UniformLocation ->
              GLfloat -> GLfloat -> GLfloat -> GLfloat -> m ()
 uniform4f (UniformLocation loc) = glUniform4f loc
+
+uniformMatrix4f :: MonadIO m =>
+                   UniformLocation -> GLsizei -> GLboolean -> Ptr GLfloat -> m ()
+uniformMatrix4f (UniformLocation loc) = glUniformMatrix4fv loc
+
+type DrawMode = GLenum
+type DataType = GLenum
+
+drawElements :: (Integral a, MonadIO m) =>
+                DrawMode -> a -> DataType -> Ptr () -> m ()
+drawElements mode count = glDrawElements mode (fromIntegral count)

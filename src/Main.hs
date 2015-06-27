@@ -4,13 +4,13 @@
 module Main ( main ) where
 
 import Control.Exception (bracket)
+import Control.Lens ((.~))
 import Control.Monad.State
-
-import Data.Maybe (fromJust)
-import Data.Word (Word32)
-import Foreign (nullPtr)
+import Data.Word (Word16, Word32)
+import Foreign (castPtr, nullPtr, with)
 import Graphics.GL.Core45
 import qualified Graphics.UI.SDL as SDL
+import Linear ((!*!))
 import qualified Linear as L
 
 import Hasgel.Display
@@ -19,29 +19,64 @@ import qualified Hasgel.SDL.Basic as MySDL
 import qualified Hasgel.SDL.Events as MySDL
 import qualified Hasgel.SDL.Video as MySDL
 
-triangle :: [L.V4 Float]
-triangle = [ L.V4 0.25 (-0.25) 0.5 1.0,
-             L.V4 (-0.25) (-0.25) 0.5 1.0,
-             L.V4 0.25 0.25 0.5 1.0
-           ]
+ortho :: L.M44 Float
+ortho = L.ortho (-2) 2 (-2) 2 (-2) 2
+
+deg2Rad :: Floating a => a -> a
+deg2Rad = ((pi / 180) *)
+
+persp :: L.M44 Float
+persp = L.perspective fovy ar n f
+        where fovy = deg2Rad 75
+              ar = 800 / 600
+              n = 0.1
+              f = 100
+
+uniformProjection :: MonadIO m => Program -> m ()
+uniformProjection prog = do
+  useProgram prog
+  Just loc <- getUniformLocation prog "proj"
+  liftIO . with persp $ uniformMatrix4f loc 1 GL_TRUE . castPtr
+
+setModelTransform :: MonadIO m => Program -> Float -> m ()
+setModelTransform prog angle = do
+  useProgram prog
+  Just loc <- getUniformLocation prog "model"
+  let trans = L.translation .~ L.V3 0 0 (-5) $ L.identity
+      rot = L.fromQuaternion . L.axisAngle (L.V3 1 1 0) $ deg2Rad angle
+      model = trans !*! L.m33_to_m44 rot
+  liftIO . with model $ uniformMatrix4f loc 1 GL_TRUE . castPtr
 
 main :: IO ()
 main =
   MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
+    glViewport 0 0 800 600
     glActiveTexture GL_TEXTURE0
     bracket loadResources freeResources $ \res -> do
       vao <- gen :: IO VertexArray
       glBindVertexArray $ object vao
       buf <- gen :: IO Buffer
       glBindBuffer GL_ARRAY_BUFFER $ object buf
-      bufferData GL_ARRAY_BUFFER triangle GL_STATIC_DRAW
-      glVertexAttribPointer 0 4 GL_FLOAT GL_FALSE 0 nullPtr
+      bufferData GL_ARRAY_BUFFER (meshVertices cube) GL_STATIC_DRAW
+      glVertexAttribPointer 0 3 GL_FLOAT GL_FALSE 0 nullPtr
       glEnableVertexAttribArray 0
+      indexBuf <- genIndexBuffer cube
+      uniformProjection $ mainProgram res
+      glEnable GL_DEPTH_TEST
       current <- SDL.getTicks
       void $ execStateT loop World { loopState = Continue, display = d,
                                      currentTime = current, resources = res }
+      delete indexBuf
       delete buf
       delete vao
+
+genIndexBuffer :: MonadIO m => Mesh -> m Buffer
+genIndexBuffer mesh = do
+  let ixs = concatMap (map (\x -> x - 1) . faceVertexIx) $ meshFaces mesh
+  buf <- gen
+  glBindBuffer GL_ELEMENT_ARRAY_BUFFER $ object buf
+  bufferData GL_ELEMENT_ARRAY_BUFFER ixs GL_STATIC_DRAW
+  pure buf
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
@@ -89,10 +124,11 @@ loop = do
       let current = fromIntegral (currentTime w) / 1000
           r = 0.5 + 0.5 * sin current
           g = 0.5 + 0.5 * cos current
+          vertexCount = 3 * length (meshFaces cube)
       clearBufferfv GL_COLOR 0 [r, g, 0, 1]
-      loc <- getUniformLocation (mainProgram res) "offset"
-      uniform4f (fromJust loc) (0.5 * sin current) (0.6 * cos current) 0 0
-      glDrawArrays GL_TRIANGLES 0 3
+      clearDepthBuffer 1
+      setModelTransform (mainProgram res) $ current * 10
+      drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
       useProgram $ axisProgram res
       glDrawArrays GL_LINES 0 6
       throwError
@@ -131,43 +167,48 @@ loadTexture file = do
   pure tex
 
 data Mesh = Mesh
-  { meshVertices :: [Float]
-  , meshFaceIndexes :: [(Int, Maybe Int, Maybe Int)]
-  , meshUvs :: Maybe [Float]
-  , meshNormals :: Maybe [Float]
+  { meshVertices :: [L.V3 Float]
+  , meshFaces :: [Face]
+  , meshUvs :: Maybe [L.V2 Float]
+  , meshNormals :: Maybe [L.V3 Float]
+  }
+
+data Face = Face
+  { faceVertexIx :: [Word16]
+  , faceUvIx :: Maybe [Word16]
+  , faceNormalIx :: Maybe [Word16]
   }
 
 cube :: Mesh
-cube = Mesh{
-  meshVertices = [ -1, -1,  1,
-                   -1, -1, -1,
-                    1, -1, -1,
-                    1, -1,  1,
-                   -1,  1,  1,
-                   -1,  1, -1,
-                    1,  1, -1,
-                    1,  1,  1
+cube = Mesh {
+  meshVertices = [ L.V3 (-1) (-1)   1,
+                   L.V3 (-1) (-1) (-1),
+                   L.V3   1  (-1) (-1),
+                   L.V3   1  (-1)   1,
+                   L.V3 (-1)   1    1,
+                   L.V3 (-1)   1  (-1),
+                   L.V3   1    1  (-1),
+                   L.V3   1    1    1
                  ]
-  , meshFaceIndexes = [
-      (2, Nothing, Just 1), (3, Nothing, Just 1), (4, Nothing, Just 1),
-      (8, Nothing, Just 2), (7, Nothing, Just 2), (6, Nothing, Just 2),
-      (5, Nothing, Just 3), (6, Nothing, Just 3), (2, Nothing, Just 3),
-      (6, Nothing, Just 4), (7, Nothing, Just 4), (3, Nothing, Just 4),
-      (3, Nothing, Just 5), (7, Nothing, Just 5), (8, Nothing, Just 5),
-      (1, Nothing, Just 6), (4, Nothing, Just 6), (8, Nothing, Just 6),
-      (1, Nothing, Just 1), (2, Nothing, Just 1), (4, Nothing, Just 1),
-      (5, Nothing, Just 2), (8, Nothing, Just 2), (6, Nothing, Just 2),
-      (1, Nothing, Just 3), (5, Nothing, Just 3), (2, Nothing, Just 3),
-      (2, Nothing, Just 4), (6, Nothing, Just 4), (3, Nothing, Just 4),
-      (4, Nothing, Just 5), (3, Nothing, Just 5), (8, Nothing, Just 5),
-      (5, Nothing, Just 6), (1, Nothing, Just 6), (8, Nothing, Just 6)
-      ]
+  , meshFaces = [ Face [2, 3, 4] Nothing $ Just [1, 1, 1],
+                  Face [8, 7, 6] Nothing $ Just [2, 2, 2],
+                  Face [5, 6, 2] Nothing $ Just [3, 3, 3],
+                  Face [6, 7, 3] Nothing $ Just [4, 4, 4],
+                  Face [3, 7, 8] Nothing $ Just [5, 5, 5],
+                  Face [1, 4, 8] Nothing $ Just [6, 6, 6],
+                  Face [1, 2, 4] Nothing $ Just [1, 1, 1],
+                  Face [5, 8, 6] Nothing $ Just [2, 2, 2],
+                  Face [1, 5, 2] Nothing $ Just [3, 3, 3],
+                  Face [2, 6, 3] Nothing $ Just [4, 4, 4],
+                  Face [4, 3, 8] Nothing $ Just [5, 5, 5],
+                  Face [5, 1, 8] Nothing $ Just [6, 6, 6]
+                ]
   , meshUvs = Nothing
-  , meshNormals = Just [ 0, -1, 0,
-                         0,  1, 0,
-                         -1, 0, 0,
-                         0, 0, -1,
-                         1, 0, 0,
-                         0, 0, 1
+  , meshNormals = Just [ L.V3   0 (-1)  0,
+                         L.V3   0   1   0,
+                         L.V3 (-1)  0   0,
+                         L.V3   0   0 (-1),
+                         L.V3   1   0   0,
+                         L.V3   0   0   1
                        ]
   }
