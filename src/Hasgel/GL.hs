@@ -5,10 +5,12 @@ module Hasgel.GL (
   module Hasgel.GL.Shader,
   Program(..), GLError(..),
   VertexArray, Texture, Index(..), Buffer, BufferData(..),
+  Query,
   linkProgram, getError, throwError,
   getProgramiv, getProgramInfoLog, useProgram,
   vertexAttrib4f, clearBufferfv, clearDepthBuffer, bufferData,
-  getUniformLocation, uniform4f, uniformMatrix4f, drawElements
+  getUniformLocation, uniform4f, uniformMatrix4f, drawElements,
+  beginQuery, endQuery, getQueryResult
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -16,6 +18,7 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
+import Data.Word (Word32)
 import Foreign (Ptr, Storable (..), alloca, allocaArray, castPtr, nullPtr, peek,
                 peekArray, with, withArray, withArrayLen)
 import Foreign.C (peekCString, withCAString)
@@ -200,3 +203,28 @@ type DataType = GLenum
 drawElements :: (Integral a, MonadIO m) =>
                 DrawMode -> a -> DataType -> Ptr () -> m ()
 drawElements mode count = glDrawElements mode (fromIntegral count)
+
+newtype Query = Query GLuint
+
+instance Object Query where
+  object (Query q) = q
+  deletes qs = liftIO . withArrayLen (object <$> qs) $ \n ptr ->
+    glDeleteQueries (fromIntegral n) ptr
+
+instance Gen Query where
+  gens n = liftIO . allocaArray n $ \ptr -> do
+    glGenQueries (fromIntegral n) ptr
+    map Query <$> peekArray n ptr
+
+type QueryTarget = GLenum
+
+beginQuery :: MonadIO m => QueryTarget -> Query -> m ()
+beginQuery target = glBeginQuery target . object
+
+endQuery :: MonadIO m => QueryTarget -> m ()
+endQuery = glEndQuery
+
+getQueryResult :: MonadIO m => Query -> m Word32
+getQueryResult (Query q) = liftIO . alloca $ \ptr -> do
+  glGetQueryObjectuiv q GL_QUERY_RESULT ptr
+  peek ptr

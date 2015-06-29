@@ -6,8 +6,7 @@ module Main ( main ) where
 import Control.Exception (bracket)
 import Control.Lens ((.~))
 import Control.Monad.State
-
-
+import Data.Monoid ((<>))
 import Data.Word (Word16, Word32)
 import Foreign (castPtr, nullPtr, with)
 import Graphics.GL.Core45
@@ -88,6 +87,7 @@ data Resources = Resources
   { texture :: Texture
   , mainProgram :: Program
   , axisProgram :: Program
+  , timeQuery :: Query
   }
 
 loadResources :: MonadIO m => m Resources
@@ -97,13 +97,15 @@ loadResources = do
                                ("shaders/basic.frag", FragmentShader)]
     axis <- compileProgram [("shaders/axis.vert", VertexShader),
                             ("shaders/axis.frag", FragmentShader)]
-    pure $ Resources tex program axis
+    timeQuery <- gen
+    pure $ Resources tex program axis timeQuery
 
 freeResources :: MonadIO m => Resources -> m ()
 freeResources res = do
   delete $ texture res
   delete $ mainProgram res
   delete $ axisProgram res
+  delete $ timeQuery res
 
 data LoopState = Continue | Quit deriving (Eq, Show)
 
@@ -120,8 +122,9 @@ loop = do
   when (ls /= Quit) $ do
     getEvents >>= mapM_ handleEvent
     w <- get
+    let res = resources w
+    beginQuery GL_TIME_ELAPSED $ timeQuery res
     liftIO . renderDisplay (display w) $ do
-      let res = resources w
       useProgram $ mainProgram res
       let current = fromIntegral (currentTime w) / 1000
           r = 0.5 + 0.5 * sin current
@@ -134,6 +137,11 @@ loop = do
       useProgram $ axisProgram res
       glDrawArrays GL_LINES 0 6
       throwError
+    endQuery GL_TIME_ELAPSED
+    ns <- getQueryResult $ timeQuery res
+    let ms = fromIntegral ns * 1E-6
+        win = getWindow $ display w
+    MySDL.setWindowTitle win $ "hasgel " <> show ms <> " ms"
     updateTime
     loop
 

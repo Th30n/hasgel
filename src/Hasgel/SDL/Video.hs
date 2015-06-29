@@ -8,7 +8,7 @@ module Hasgel.SDL.Video (
   createWindow, destroyWindow, glCreateContext, glDeleteContext,
   glSetContextVersion, glSetContextFlags, glSetContextProfile,
   glSwapWindow, loadBMP, freeSurface, surfaceW, surfaceH, surfacePixels,
-  convertSurfaceFormat
+  convertSurfaceFormat, setWindowTitle
 ) where
 
 
@@ -136,6 +136,9 @@ createWindow title rect flags = do
 -- | This function destroys the window.
 destroyWindow :: MonadIO m => Window -> m ()
 destroyWindow = SDL.destroyWindow
+
+setWindowTitle :: MonadIO m => Window -> String -> m ()
+setWindowTitle w title = liftIO . withCString title $ SDL.setWindowTitle w
 
 type GLContext = SDL.GLContext
 
