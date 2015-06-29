@@ -25,8 +25,6 @@ type Event = SDL.Event
 pollEvent :: MonadIO m => m (Maybe Event)
 pollEvent = liftIO . alloca $ \e -> do
   r <- SDL.pollEvent e
-  if r == 0 then
-    return Nothing
-  else do
-    event <- peek e
-    return $ Just event
+  if r == 0
+    then pure Nothing
+    else Just <$> peek e

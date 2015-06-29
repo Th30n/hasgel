@@ -6,12 +6,15 @@ module Main ( main ) where
 import Control.Exception (bracket)
 import Control.Lens ((.~))
 import Control.Monad.State
+
+
 import Data.Word (Word16, Word32)
 import Foreign (castPtr, nullPtr, with)
 import Graphics.GL.Core45
 import qualified Graphics.UI.SDL as SDL
 import Linear ((!*!))
 import qualified Linear as L
+
 
 import Hasgel.Display
 import Hasgel.GL
@@ -115,8 +118,7 @@ loop :: (MonadIO m, MonadState WorldState m) => m ()
 loop = do
   ls <- gets loopState
   when (ls /= Quit) $ do
-    event <- MySDL.pollEvent
-    mapM_ handleEvent event
+    getEvents >>= mapM_ handleEvent
     w <- get
     liftIO . renderDisplay (display w) $ do
       let res = resources w
@@ -135,12 +137,18 @@ loop = do
     updateTime
     loop
 
+getEvents :: MonadIO m => m [MySDL.Event]
+getEvents = MySDL.pollEvent >>= collect
+  where collect :: MonadIO m => Maybe MySDL.Event -> m [MySDL.Event]
+        collect Nothing = pure []
+        collect (Just e) = (e:) <$> getEvents
+
 updateTime :: (MonadIO m, MonadState WorldState m) => m ()
 updateTime = SDL.getTicks >>= \t -> modify $ \w -> w { currentTime = t }
 
 handleEvent :: MonadState WorldState m => MySDL.Event -> m ()
 handleEvent (MySDL.QuitEvent _ _) = modify $ \w ->  w { loopState = Quit }
-handleEvent _ = return ()
+handleEvent _ = pure ()
 
 compileProgram :: MonadIO m => [(FilePath, ShaderType)] -> m Program
 compileProgram files = do
