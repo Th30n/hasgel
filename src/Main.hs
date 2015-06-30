@@ -13,7 +13,7 @@ import Graphics.GL.Core45
 import qualified Graphics.UI.SDL as SDL
 import Linear ((!*!))
 import qualified Linear as L
-
+import Text.Printf (printf)
 
 import Hasgel.Display
 import Hasgel.GL
@@ -66,8 +66,11 @@ main =
       uniformProjection $ mainProgram res
       glEnable GL_DEPTH_TEST
       current <- SDL.getTicks
+      let (q1:q2:_) = timeQueries res
+          ft = createFrameTimer (q1, q2) current
       void $ execStateT loop World { loopState = Continue, display = d,
-                                     currentTime = current, resources = res }
+                                     currentTime = current, resources = res,
+                                     worldFrameTimer = ft }
       delete indexBuf
       delete buf
       delete vao
@@ -87,7 +90,7 @@ data Resources = Resources
   { texture :: Texture
   , mainProgram :: Program
   , axisProgram :: Program
-  , timeQuery :: Query
+  , timeQueries :: [Query]
   }
 
 loadResources :: MonadIO m => m Resources
@@ -97,23 +100,26 @@ loadResources = do
                                ("shaders/basic.frag", FragmentShader)]
     axis <- compileProgram [("shaders/axis.vert", VertexShader),
                             ("shaders/axis.frag", FragmentShader)]
-    timeQuery <- gen
-    pure $ Resources tex program axis timeQuery
+    qs <- gens 2
+    pure $ Resources tex program axis qs
 
 freeResources :: MonadIO m => Resources -> m ()
 freeResources res = do
   delete $ texture res
   delete $ mainProgram res
   delete $ axisProgram res
-  delete $ timeQuery res
+  deletes $ timeQueries res
+
+type Milliseconds = Word32
 
 data LoopState = Continue | Quit deriving (Eq, Show)
 
 data WorldState = World
   { loopState :: LoopState
   , display :: Display
-  , currentTime :: Word32 -- ^ Time in milliseconds
+  , currentTime :: Milliseconds
   , resources :: Resources
+  , worldFrameTimer :: FrameTimer
   }
 
 loop :: (MonadIO m, MonadState WorldState m) => m ()
@@ -123,8 +129,8 @@ loop = do
     getEvents >>= mapM_ handleEvent
     w <- get
     let res = resources w
-    beginQuery GL_TIME_ELAPSED $ timeQuery res
-    liftIO . renderDisplay (display w) $ do
+        ft = worldFrameTimer w
+    withFrameTimer ft $ liftIO . renderDisplay (display w) $ do
       useProgram $ mainProgram res
       let current = fromIntegral (currentTime w) / 1000
           r = 0.5 + 0.5 * sin current
@@ -137,13 +143,50 @@ loop = do
       useProgram $ axisProgram res
       glDrawArrays GL_LINES 0 6
       throwError
-    endQuery GL_TIME_ELAPSED
-    ns <- getQueryResult $ timeQuery res
-    let ms = fromIntegral ns * 1E-6
-        win = getWindow $ display w
-    MySDL.setWindowTitle win $ "hasgel " <> show ms <> " ms"
+    displayFrameRate
     updateTime
     loop
+
+displayFrameRate :: (MonadIO m, MonadState WorldState m) => m ()
+displayFrameRate = do
+  ft <- gets worldFrameTimer >>= updateFrameTimer
+  modify $ \w -> w { worldFrameTimer = ft }
+  time <- gets currentTime
+  when (time >= 500 + timerStart ft) $ do
+    let ms = printf "\tGPU: %.2fms" $ getFrameTime ft
+    win <- gets (getWindow . display)
+    MySDL.setWindowTitle win $ "hasgel " <> ms
+    modify $ \w -> w { worldFrameTimer = resetFrameTimer ft time }
+
+data FrameTimer = FrameTimer
+  { timerQueries :: (Query, Query)
+  , timerFrames :: Int
+  , timerAccum :: Double
+  , timerStart :: Milliseconds
+  } deriving (Show)
+
+withFrameTimer :: MonadIO m => FrameTimer -> m a -> m a
+withFrameTimer (FrameTimer qs frames _ _) action = do
+  let q = if odd frames then fst qs else snd qs
+  withQuery GL_TIME_ELAPSED q action
+
+createFrameTimer :: (Query, Query) -> Milliseconds -> FrameTimer
+createFrameTimer qs start = FrameTimer qs 0 0 start
+
+updateFrameTimer :: MonadIO m => FrameTimer -> m FrameTimer
+updateFrameTimer ft@(FrameTimer _ 0 _ _) = pure ft { timerFrames = 1 }
+updateFrameTimer (FrameTimer qs frames acc time) = do
+  let q = if even frames then fst qs else snd qs
+  ms <- (*1E-6) . fromIntegral <$> getQueryResult q
+  pure $ FrameTimer qs (frames + 1) (acc + ms) time
+
+resetFrameTimer :: FrameTimer -> Milliseconds -> FrameTimer
+resetFrameTimer (FrameTimer qs@(q1, q2) frames _ _) start =
+  let qs' = if odd frames then qs else (q2, q1)
+  in FrameTimer qs' 1 0 start
+
+getFrameTime :: FrameTimer -> Double
+getFrameTime (FrameTimer _ frames acc _) = acc / fromIntegral frames
 
 getEvents :: MonadIO m => m [MySDL.Event]
 getEvents = MySDL.pollEvent >>= collect

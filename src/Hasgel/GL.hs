@@ -10,7 +10,7 @@ module Hasgel.GL (
   getProgramiv, getProgramInfoLog, useProgram,
   vertexAttrib4f, clearBufferfv, clearDepthBuffer, bufferData,
   getUniformLocation, uniform4f, uniformMatrix4f, drawElements,
-  beginQuery, endQuery, getQueryResult
+  beginQuery, endQuery, getQueryResult, withQuery
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -204,7 +204,7 @@ drawElements :: (Integral a, MonadIO m) =>
                 DrawMode -> a -> DataType -> Ptr () -> m ()
 drawElements mode count = glDrawElements mode (fromIntegral count)
 
-newtype Query = Query GLuint
+newtype Query = Query GLuint deriving (Show)
 
 instance Object Query where
   object (Query q) = q
@@ -228,3 +228,10 @@ getQueryResult :: MonadIO m => Query -> m Word32
 getQueryResult (Query q) = liftIO . alloca $ \ptr -> do
   glGetQueryObjectuiv q GL_QUERY_RESULT ptr
   peek ptr
+
+withQuery :: MonadIO m => QueryTarget -> Query -> m a -> m a
+withQuery target q action = do
+  beginQuery target q
+  r <- action
+  endQuery target
+  pure r
