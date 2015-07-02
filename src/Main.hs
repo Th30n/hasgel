@@ -6,7 +6,7 @@ module Main ( main ) where
 import Control.Exception (bracket)
 import Control.Lens ((.~))
 import Control.Monad.State
-import Data.Monoid ((<>))
+
 import Data.Word (Word16, Word32)
 import Foreign (castPtr, nullPtr, with)
 import Graphics.GL.Core45
@@ -16,6 +16,7 @@ import qualified Linear as L
 import Text.Printf (printf)
 
 import Hasgel.Display
+import qualified Hasgel.FrameTimer as FT
 import Hasgel.GL
 import qualified Hasgel.SDL.Basic as MySDL
 import qualified Hasgel.SDL.Events as MySDL
@@ -67,7 +68,7 @@ main =
       glEnable GL_DEPTH_TEST
       current <- SDL.getTicks
       let (q1:q2:_) = timeQueries res
-          ft = createFrameTimer (q1, q2) current
+          ft = FT.createFrameTimer (q1, q2) current
       void $ execStateT loop World { loopState = Continue, display = d,
                                      currentTime = current, resources = res,
                                      worldFrameTimer = ft }
@@ -119,7 +120,7 @@ data WorldState = World
   , display :: Display
   , currentTime :: Milliseconds
   , resources :: Resources
-  , worldFrameTimer :: FrameTimer
+  , worldFrameTimer :: FT.FrameTimer
   }
 
 loop :: (MonadIO m, MonadState WorldState m) => m ()
@@ -129,8 +130,7 @@ loop = do
     getEvents >>= mapM_ handleEvent
     w <- get
     let res = resources w
-        ft = worldFrameTimer w
-    withFrameTimer ft $ liftIO . renderDisplay (display w) $ do
+    FT.withFrameTimer $ liftIO . renderDisplay (display w) $ do
       useProgram $ mainProgram res
       let current = fromIntegral (currentTime w) / 1000
           r = 0.5 + 0.5 * sin current
@@ -147,46 +147,21 @@ loop = do
     updateTime
     loop
 
+timerInterval = 500 :: Milliseconds
+
 displayFrameRate :: (MonadIO m, MonadState WorldState m) => m ()
 displayFrameRate = do
-  ft <- gets worldFrameTimer >>= updateFrameTimer
-  modify $ \w -> w { worldFrameTimer = ft }
+  ft <- gets worldFrameTimer
   time <- gets currentTime
-  when (time >= 500 + timerStart ft) $ do
-    let ms = printf "\tGPU: %.2fms" $ getFrameTime ft
+  when (time >= timerInterval + FT.timerStart ft) $ do
+    let title = printf "hasgel  GPU: %.2fms" $ FT.getFrameTime ft
     win <- gets (getWindow . display)
-    MySDL.setWindowTitle win $ "hasgel " <> ms
-    modify $ \w -> w { worldFrameTimer = resetFrameTimer ft time }
+    MySDL.setWindowTitle win title
+    modify . flip FT.setFrameTimer $ FT.resetFrameTimer ft time
 
-data FrameTimer = FrameTimer
-  { timerQueries :: (Query, Query)
-  , timerFrames :: Int
-  , timerAccum :: Double
-  , timerStart :: Milliseconds
-  } deriving (Show)
-
-withFrameTimer :: MonadIO m => FrameTimer -> m a -> m a
-withFrameTimer (FrameTimer qs frames _ _) action = do
-  let q = if odd frames then fst qs else snd qs
-  withQuery GL_TIME_ELAPSED q action
-
-createFrameTimer :: (Query, Query) -> Milliseconds -> FrameTimer
-createFrameTimer qs start = FrameTimer qs 0 0 start
-
-updateFrameTimer :: MonadIO m => FrameTimer -> m FrameTimer
-updateFrameTimer ft@(FrameTimer _ 0 _ _) = pure ft { timerFrames = 1 }
-updateFrameTimer (FrameTimer qs frames acc time) = do
-  let q = if even frames then fst qs else snd qs
-  ms <- (*1E-6) . fromIntegral <$> getQueryResult q
-  pure $ FrameTimer qs (frames + 1) (acc + ms) time
-
-resetFrameTimer :: FrameTimer -> Milliseconds -> FrameTimer
-resetFrameTimer (FrameTimer qs@(q1, q2) frames _ _) start =
-  let qs' = if odd frames then qs else (q2, q1)
-  in FrameTimer qs' 1 0 start
-
-getFrameTime :: FrameTimer -> Double
-getFrameTime (FrameTimer _ frames acc _) = acc / fromIntegral frames
+instance FT.HasFrameTimer WorldState where
+  getFrameTimer = worldFrameTimer
+  setFrameTimer w ft = w { worldFrameTimer = ft }
 
 getEvents :: MonadIO m => m [MySDL.Event]
 getEvents = MySDL.pollEvent >>= collect
