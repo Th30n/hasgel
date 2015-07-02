@@ -3,10 +3,10 @@
 
 module Main ( main ) where
 
+
 import Control.Exception (bracket)
 import Control.Lens ((.~))
 import Control.Monad.State
-
 import Data.Word (Word16, Word32)
 import Foreign (castPtr, nullPtr, with)
 import Graphics.GL.Core45
@@ -147,14 +147,21 @@ loop = do
     updateTime
     loop
 
-timerInterval = 500 :: Milliseconds
+timerInterval :: Milliseconds
+timerInterval = 500
+
+titleFormat :: String
+titleFormat = "hasgel  CPU: %.2fms  GPU: %.2fms"
 
 displayFrameRate :: (MonadIO m, MonadState WorldState m) => m ()
 displayFrameRate = do
   ft <- gets worldFrameTimer
   time <- gets currentTime
-  when (time >= timerInterval + FT.timerStart ft) $ do
-    let title = printf "hasgel  GPU: %.2fms" $ FT.getFrameTime ft
+  let startTime = FT.timerStart ft
+  when (time >= timerInterval + startTime) $ do
+    let cpuTime = FT.getCPUTime ft time
+        gpuTime = FT.getGPUTime ft
+        title = printf titleFormat cpuTime gpuTime
     win <- gets (getWindow . display)
     MySDL.setWindowTitle win title
     modify . flip FT.setFrameTimer $ FT.resetFrameTimer ft time

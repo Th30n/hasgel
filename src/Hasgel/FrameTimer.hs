@@ -2,7 +2,7 @@
 
 module Hasgel.FrameTimer (
   FrameTimer, HasFrameTimer(..), createFrameTimer, withFrameTimer, timerStart,
-  getFrameTime, resetFrameTimer
+  getGPUTime, getCPUTime, resetFrameTimer
 ) where
 
 import Control.Monad.IO.Class (MonadIO)
@@ -49,6 +49,10 @@ resetFrameTimer (FrameTimer qs@(q1, q2) frames _ _) start =
   let qs' = if odd frames then qs else (q2, q1)
   in FrameTimer qs' 1 0 start
 
-getFrameTime :: FrameTimer -> Double
-getFrameTime (FrameTimer _ frames acc _) = acc / fromIntegral frames
+getGPUTime :: FrameTimer -> Double
+getGPUTime (FrameTimer _ frames acc _) = acc / fromIntegral frames
 
+getCPUTime :: FrameTimer -> Milliseconds -> Double
+getCPUTime ft end = dt / frames
+  where frames = fromIntegral $ timerFrames ft
+        dt = fromIntegral $ end - timerStart ft
