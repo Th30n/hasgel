@@ -10,7 +10,7 @@ module Hasgel.GL (
   getProgramiv, getProgramInfoLog, useProgram,
   vertexAttrib4f, clearBufferfv, clearDepthBuffer, bufferData,
   getUniformLocation, uniform4f, uniformMatrix4f, drawElements,
-  beginQuery, endQuery, getQueryResult, withQuery
+  beginQuery, endQuery, getQueryResult, withQuery, queryCounter
 ) where
 
 import Control.Exception (Exception, throwIO)
@@ -18,7 +18,7 @@ import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
-import Data.Word (Word32)
+import Data.Word (Word64)
 import Foreign (Ptr, Storable (..), alloca, allocaArray, castPtr, nullPtr, peek,
                 peekArray, with, withArray, withArrayLen)
 import Foreign.C (peekCString, withCAString)
@@ -224,9 +224,9 @@ beginQuery target = glBeginQuery target . object
 endQuery :: MonadIO m => QueryTarget -> m ()
 endQuery = glEndQuery
 
-getQueryResult :: MonadIO m => Query -> m Word32
+getQueryResult :: MonadIO m => Query -> m Word64
 getQueryResult (Query q) = liftIO . alloca $ \ptr -> do
-  glGetQueryObjectuiv q GL_QUERY_RESULT ptr
+  glGetQueryObjectui64v q GL_QUERY_RESULT ptr
   peek ptr
 
 withQuery :: MonadIO m => QueryTarget -> Query -> m a -> m a
@@ -235,3 +235,6 @@ withQuery target q action = do
   r <- action
   endQuery target
   pure r
+
+queryCounter :: MonadIO m => Query -> m ()
+queryCounter q = glQueryCounter (object q) GL_TIMESTAMP

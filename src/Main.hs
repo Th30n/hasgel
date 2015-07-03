@@ -3,7 +3,6 @@
 
 module Main ( main ) where
 
-
 import Control.Exception (bracket)
 import Control.Lens ((.~))
 import Control.Monad.State
@@ -67,8 +66,8 @@ main =
       uniformProjection $ mainProgram res
       glEnable GL_DEPTH_TEST
       current <- SDL.getTicks
-      let (q1:q2:_) = timeQueries res
-          ft = FT.createFrameTimer (q1, q2) current
+      let [q1, q2, q3, q4] = timeQueries res
+          ft = FT.createFrameTimer ((q1, q2), (q3, q4)) current
       void $ execStateT loop World { loopState = Continue, display = d,
                                      currentTime = current, resources = res,
                                      worldFrameTimer = ft }
@@ -101,7 +100,7 @@ loadResources = do
                                ("shaders/basic.frag", FragmentShader)]
     axis <- compileProgram [("shaders/axis.vert", VertexShader),
                             ("shaders/axis.frag", FragmentShader)]
-    qs <- gens 2
+    qs <- gens 4
     pure $ Resources tex program axis qs
 
 freeResources :: MonadIO m => Resources -> m ()
@@ -130,7 +129,7 @@ loop = do
     getEvents >>= mapM_ handleEvent
     w <- get
     let res = resources w
-    FT.withFrameTimer $ liftIO . renderDisplay (display w) $ do
+    renderDisplay (display w) . FT.withFrameTimer $ do
       useProgram $ mainProgram res
       let current = fromIntegral (currentTime w) / 1000
           r = 0.5 + 0.5 * sin current
