@@ -40,13 +40,42 @@ uniformProjection prog = do
   Just loc <- getUniformLocation prog "proj"
   liftIO . with persp $ uniformMatrix4f loc 1 GL_TRUE . castPtr
 
-setModelTransform :: MonadIO m => Program -> Float -> m ()
-setModelTransform prog angle = do
+updateModelTransform :: L.M44 Float -> Time -> L.M44 Float
+updateModelTransform prev time =
+  let trans = L.translation .~ L.V3 0 0 (-5) $ L.identity
+      current = fromIntegral (timeCurrent time) * 1E-3
+      angle = 10 * current
+      rot = L.fromQuaternion . L.axisAngle (L.V3 1 1 0) $ deg2Rad angle
+  in trans !*! L.m33_to_m44 rot
+
+simulationStep :: Milliseconds
+simulationStep = 20
+
+maxFrameSkip :: Int
+maxFrameSkip = 5
+
+simulate :: MonadState World m => m ()
+simulate = do
+  acc <- (+) <$> timeDelta <*> timeAccumulator <$> gets worldTime
+  setAccum acc
+  simulate' acc 1
+  where setAccum a = do
+          time <- gets worldTime
+          modify $ \w -> w { worldTime = time { timeAccumulator = a } }
+        simulate' acc i | acc < simulationStep || i >= maxFrameSkip = pure ()
+                        | otherwise = do
+                            model <- gets worldModelTransform
+                            time <- gets worldTime
+                            let model' = updateModelTransform model time
+                                acc' = acc - simulationStep
+                            modify $ \w -> w { worldModelTransform = model' }
+                            setAccum acc'
+                            simulate' acc' $ i + 1
+
+setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
+setModelTransform prog model = do
   useProgram prog
   Just loc <- getUniformLocation prog "model"
-  let trans = L.translation .~ L.V3 0 0 (-5) $ L.identity
-      rot = L.fromQuaternion . L.axisAngle (L.V3 1 1 0) $ deg2Rad angle
-      model = trans !*! L.m33_to_m44 rot
   liftIO . with model $ uniformMatrix4f loc 1 GL_TRUE . castPtr
 
 main :: IO ()
@@ -68,9 +97,7 @@ main =
       current <- SDL.getTicks
       let [q1, q2, q3, q4] = timeQueries res
           ft = FT.createFrameTimer ((q1, q2), (q3, q4)) current
-      void $ execStateT loop World { loopState = Continue, display = d,
-                                     currentTime = current, resources = res,
-                                     worldFrameTimer = ft }
+      void . execStateT loop $ createWorld current d res ft
       delete indexBuf
       delete buf
       delete vao
@@ -112,32 +139,47 @@ freeResources res = do
 
 type Milliseconds = Word32
 
-data LoopState = Continue | Quit deriving (Eq, Show)
+data Loop = Continue | Quit deriving (Eq, Show)
 
-data WorldState = World
-  { loopState :: LoopState
+data World = World
+  { loopState :: Loop
   , display :: Display
-  , currentTime :: Milliseconds
+  , worldTime :: Time
   , resources :: Resources
   , worldFrameTimer :: FT.FrameTimer
+  , worldModelTransform :: L.M44 Float
   }
 
-loop :: (MonadIO m, MonadState WorldState m) => m ()
+data Time = Time
+  { timeCurrent :: Milliseconds
+  , timeDelta :: Milliseconds
+  , timeAccumulator :: Milliseconds
+  }
+
+createWorld :: Milliseconds -> Display -> Resources -> FT.FrameTimer -> World
+createWorld time disp res ft = World { loopState = Continue, display = disp,
+                                       worldTime = Time time 0 0,
+                                       resources = res, worldFrameTimer = ft,
+                                       worldModelTransform = L.identity }
+
+loop :: (MonadIO m, MonadState World m) => m ()
 loop = do
   ls <- gets loopState
   when (ls /= Quit) $ do
     getEvents >>= mapM_ handleEvent
+    simulate
     w <- get
-    let res = resources w
     renderDisplay (display w) . FT.withFrameTimer $ do
+      let res = resources w
       useProgram $ mainProgram res
-      let current = fromIntegral (currentTime w) / 1000
+      let current = fromIntegral (timeCurrent $ worldTime w) / 1000
           r = 0.5 + 0.5 * sin current
           g = 0.5 + 0.5 * cos current
           vertexCount = 3 * length (meshFaces cube)
+          model = worldModelTransform w
       clearBufferfv GL_COLOR 0 [r, g, 0, 1]
       clearDepthBuffer 1
-      setModelTransform (mainProgram res) $ current * 10
+      setModelTransform (mainProgram res) model
       drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
       useProgram $ axisProgram res
       glDrawArrays GL_LINES 0 6
@@ -152,10 +194,10 @@ timerInterval = 500
 titleFormat :: String
 titleFormat = "hasgel  CPU: %.2fms  GPU: %.2fms"
 
-displayFrameRate :: (MonadIO m, MonadState WorldState m) => m ()
+displayFrameRate :: (MonadIO m, MonadState World m) => m ()
 displayFrameRate = do
   ft <- gets worldFrameTimer
-  time <- gets currentTime
+  time <- gets $ timeCurrent . worldTime
   let startTime = FT.timerStart ft
   when (time >= timerInterval + startTime) $ do
     let cpuTime = FT.getCPUTime ft time
@@ -165,7 +207,7 @@ displayFrameRate = do
     MySDL.setWindowTitle win title
     modify . flip FT.setFrameTimer $ FT.resetFrameTimer ft time
 
-instance FT.HasFrameTimer WorldState where
+instance FT.HasFrameTimer World where
   getFrameTimer = worldFrameTimer
   setFrameTimer w ft = w { worldFrameTimer = ft }
 
@@ -175,11 +217,16 @@ getEvents = MySDL.pollEvent >>= collect
         collect Nothing = pure []
         collect (Just e) = (e:) <$> getEvents
 
-updateTime :: (MonadIO m, MonadState WorldState m) => m ()
-updateTime = SDL.getTicks >>= \t -> modify $ \w -> w { currentTime = t }
+updateTime :: (MonadIO m, MonadState World m) => m ()
+updateTime = do
+  newTime <- SDL.getTicks
+  time <- gets worldTime
+  let oldTime = timeCurrent time
+  modify $ \w -> w { worldTime = time { timeCurrent = newTime,
+                                        timeDelta = newTime - oldTime } }
 
-handleEvent :: MonadState WorldState m => MySDL.Event -> m ()
-handleEvent (MySDL.QuitEvent _ _) = modify $ \w ->  w { loopState = Quit }
+handleEvent :: MonadState World m => MySDL.Event -> m ()
+handleEvent (MySDL.QuitEvent _ _) = modify $ \w -> w { loopState = Quit }
 handleEvent _ = pure ()
 
 compileProgram :: MonadIO m => [(FilePath, ShaderType)] -> m Program
