@@ -48,24 +48,45 @@ simulationStep :: Milliseconds
 simulationStep = 20
 
 maxFrameSkip :: Int
-maxFrameSkip = 5
+maxFrameSkip = 10
 
-simulate :: MonadState World m => m ()
-simulate = do
-  acc <- (+) <$> timeDelta <*> timeAccumulator <$> gets worldTime
+class HasSimulation a where
+  getSimulation :: HasSimulation a => a -> Simulation
+  setSimulation :: HasSimulation a => a -> Simulation -> a
+
+instance HasSimulation World where
+  getSimulation = worldSimulation
+  setSimulation w sim = w { worldSimulation = sim }
+
+updateSimulation :: Simulation -> Milliseconds -> Simulation
+updateSimulation sim dt =
+  let time = simTime sim
+      currentTime = dt + timeCurrent time
+      acc = simAccumulatedTime sim
+      frames = simFrame sim
+  in sim { simTime = time { timeCurrent = currentTime },
+           simAccumulatedTime = acc - dt,
+           simFrame = frames + 1 }
+
+simulate :: MonadState World m => Milliseconds -> m ()
+simulate dt = do
+  acc <- gets $ (dt +) . simAccumulatedTime . getSimulation
   setAccum acc
   simulate' acc 1
   where setAccum a = do
-          time <- gets worldTime
-          modify $ \w -> w { worldTime = time { timeAccumulator = a } }
+          sim <- gets getSimulation
+          modify $ flip setSimulation sim { simAccumulatedTime = a }
         simulate' acc i | acc < simulationStep || i >= maxFrameSkip = pure ()
                         | otherwise = do
                             model <- gets worldModelTransform
-                            time <- gets worldTime
-                            let model' = updateModelTransform model time
+                            sim <- gets getSimulation
+                            let time = simTime sim
+                                model' = updateModelTransform model time
                                 acc' = acc - simulationStep
-                            modify $ \w -> w { worldModelTransform = model' }
-                            setAccum acc'
+                            modify $ \w -> w {
+                              worldModelTransform = model',
+                              worldSimulation =
+                                updateSimulation sim simulationStep }
                             simulate' acc' $ i + 1
 
 setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
@@ -143,6 +164,7 @@ data World = World
   , resources :: Resources
   , worldFrameTimer :: FT.FrameTimer
   , worldModelTransform :: Transform
+  , worldSimulation :: Simulation
   }
 
 instance FT.HasFrameTimer World where
@@ -152,21 +174,32 @@ instance FT.HasFrameTimer World where
 data Time = Time
   { timeCurrent :: Milliseconds
   , timeDelta :: Milliseconds
-  , timeAccumulator :: Milliseconds
   }
+
+data Simulation = Simulation
+  { simTime :: Time
+  , simAccumulatedTime :: Milliseconds
+  , simFrame :: Int
+  }
+
+simulation :: Simulation
+simulation = Simulation { simTime = Time 0 simulationStep,
+                          simAccumulatedTime = 0,
+                          simFrame = 0 }
 
 createWorld :: Milliseconds -> Display -> Resources -> FT.FrameTimer -> World
 createWorld time disp res ft =
-  World { loopState = Continue, display = disp, worldTime = Time time 0 0,
+  World { loopState = Continue, display = disp, worldTime = Time time 0,
           resources = res, worldFrameTimer = ft,
-          worldModelTransform = Transform L.zero (L.V3 0 0 (-5)) }
+          worldModelTransform = Transform L.zero (L.V3 0 0 (-5)),
+          worldSimulation = simulation }
 
 loop :: (MonadIO m, MonadState World m) => m ()
 loop = do
   ls <- gets loopState
   when (ls /= Quit) $ do
     getEvents >>= mapM_ handleEvent
-    simulate
+    gets (timeDelta . worldTime) >>= simulate
     w <- get
     renderDisplay (display w) . FT.withFrameTimer $ do
       let res = resources w
