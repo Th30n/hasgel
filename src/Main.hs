@@ -6,7 +6,7 @@ module Main ( main ) where
 import Control.Exception (bracket)
 import Control.Monad.State
 import Data.Word (Word32)
-import Foreign (castPtr, nullPtr, with)
+import Foreign (nullPtr)
 import Graphics.GL.Core45
 import qualified Graphics.UI.SDL as SDL
 import qualified Linear as L
@@ -36,7 +36,7 @@ uniformProjection :: MonadIO m => Program -> m ()
 uniformProjection prog = do
   useProgram prog
   Just loc <- getUniformLocation prog "proj"
-  liftIO . with persp $ uniformMatrix4f loc 1 GL_TRUE . castPtr
+  uniform loc persp
 
 updateModelTransform :: Transform -> Time -> Transform
 updateModelTransform prev time =
@@ -73,7 +73,7 @@ setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
 setModelTransform prog model = do
   useProgram prog
   Just loc <- getUniformLocation prog "model"
-  liftIO . with model $ uniformMatrix4f loc 1 GL_TRUE . castPtr
+  uniform loc model
 
 genIndexBuffer :: MonadIO m => Mesh -> m Buffer
 genIndexBuffer mesh = do
