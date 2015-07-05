@@ -34,9 +34,8 @@ persp = L.perspective fovy ar n f
 
 uniformProjection :: MonadIO m => Program -> m ()
 uniformProjection prog = do
-  useProgram prog
   Just loc <- getUniformLocation prog "proj"
-  uniform loc persp
+  useProgram prog >> uniform loc persp
 
 updateModelTransform :: Transform -> Time -> Transform
 updateModelTransform prev time =
@@ -71,9 +70,8 @@ simulate = do
 
 setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
 setModelTransform prog model = do
-  useProgram prog
   Just loc <- getUniformLocation prog "model"
-  uniform loc model
+  useProgram prog >> uniform loc model
 
 genIndexBuffer :: MonadIO m => Mesh -> m Buffer
 genIndexBuffer mesh = do
@@ -147,6 +145,10 @@ data World = World
   , worldModelTransform :: Transform
   }
 
+instance FT.HasFrameTimer World where
+  getFrameTimer = worldFrameTimer
+  setFrameTimer w ft = w { worldFrameTimer = ft }
+
 data Time = Time
   { timeCurrent :: Milliseconds
   , timeDelta :: Milliseconds
@@ -203,10 +205,6 @@ displayFrameRate = do
     win <- gets (getWindow . display)
     MySDL.setWindowTitle win title
     modify . flip FT.setFrameTimer $ FT.resetFrameTimer ft time
-
-instance FT.HasFrameTimer World where
-  getFrameTimer = worldFrameTimer
-  setFrameTimer w ft = w { worldFrameTimer = ft }
 
 getEvents :: MonadIO m => m [MySDL.Event]
 getEvents = MySDL.pollEvent >>= collect

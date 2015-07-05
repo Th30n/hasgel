@@ -1,11 +1,8 @@
 module Hasgel.SDL (
-  module Hasgel.SDL.Basic,
-  module Hasgel.SDL.BitFlag,
-  module Hasgel.SDL.Events,
-  module Hasgel.SDL.Video
+  module SDL
 ) where
 
-import Hasgel.SDL.Basic
-import Hasgel.SDL.BitFlag
-import Hasgel.SDL.Events
-import Hasgel.SDL.Video
+import Hasgel.SDL.Basic as SDL
+import Hasgel.SDL.BitFlag as SDL
+import Hasgel.SDL.Events as SDL
+import Hasgel.SDL.Video as SDL

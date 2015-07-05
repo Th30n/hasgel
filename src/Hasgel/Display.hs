@@ -36,8 +36,7 @@ createContext = MySDL.glCreateContext
 createDisplay :: MonadIO m => m Display
 createDisplay = do
   w <- createWindow
-  c <- createContext w
-  return $ Display w c
+  Display w <$> createContext w
 
 -- | Take an IO rendering action and render.
 renderDisplay :: MonadIO m => Display -> m () -> m ()

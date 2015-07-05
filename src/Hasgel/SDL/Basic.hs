@@ -124,9 +124,7 @@ setMainReady = SDL.setMainReady
 -- Giving an empty list as a mask is equivalent to using InitEverything
 -- as a mask.
 wasInit :: MonadIO m => [InitFlag] -> m [InitFlag]
-wasInit mask = do
-  ss <- SDL.wasInit $ createBitFlags mask
-  return $ fromBitFlags ss
+wasInit = fmap fromBitFlags . SDL.wasInit . createBitFlags
 
 data SDLException =
   InitializationError String |
