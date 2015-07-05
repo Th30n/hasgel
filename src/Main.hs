@@ -40,13 +40,12 @@ uniformProjection prog = do
   Just loc <- getUniformLocation prog "proj"
   liftIO . with persp $ uniformMatrix4f loc 1 GL_TRUE . castPtr
 
-updateModelTransform :: L.M44 Float -> Time -> L.M44 Float
+updateModelTransform :: Transform -> Time -> Transform
 updateModelTransform prev time =
-  let trans = L.translation .~ L.V3 0 0 (-5) $ L.identity
-      current = fromIntegral (timeCurrent time) * 1E-3
+  let current = fromIntegral (timeCurrent time) * 1E-3
       angle = 10 * current
-      rot = L.fromQuaternion . L.axisAngle (L.V3 1 1 0) $ deg2Rad angle
-  in trans !*! L.m33_to_m44 rot
+      rot = L.axisAngle (L.V3 1 1 0) $ deg2Rad angle
+  in prev { transformRotation = rot }
 
 simulationStep :: Milliseconds
 simulationStep = 20
@@ -71,6 +70,12 @@ simulate = do
                             modify $ \w -> w { worldModelTransform = model' }
                             setAccum acc'
                             simulate' acc' $ i + 1
+
+transform2Matrix :: Transform -> L.M44 Float
+transform2Matrix transform =
+  let trans = L.translation .~ transformPosition transform $ L.identity
+      rot = L.fromQuaternion $ transformRotation transform
+  in trans !*! L.m33_to_m44 rot
 
 setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
 setModelTransform prog model = do
@@ -147,7 +152,13 @@ data World = World
   , worldTime :: Time
   , resources :: Resources
   , worldFrameTimer :: FT.FrameTimer
-  , worldModelTransform :: L.M44 Float
+  , worldModelTransform :: Transform
+  }
+
+data Transform = Transform
+  {
+    transformRotation :: L.Quaternion Float
+  , transformPosition :: L.V3 Float
   }
 
 data Time = Time
@@ -157,10 +168,10 @@ data Time = Time
   }
 
 createWorld :: Milliseconds -> Display -> Resources -> FT.FrameTimer -> World
-createWorld time disp res ft = World { loopState = Continue, display = disp,
-                                       worldTime = Time time 0 0,
-                                       resources = res, worldFrameTimer = ft,
-                                       worldModelTransform = L.identity }
+createWorld time disp res ft =
+  World { loopState = Continue, display = disp, worldTime = Time time 0 0,
+          resources = res, worldFrameTimer = ft,
+          worldModelTransform = Transform L.zero (L.V3 0 0 (-5)) }
 
 loop :: (MonadIO m, MonadState World m) => m ()
 loop = do
@@ -176,7 +187,7 @@ loop = do
           r = 0.5 + 0.5 * sin current
           g = 0.5 + 0.5 * cos current
           vertexCount = 3 * length (meshFaces cube)
-          model = worldModelTransform w
+          model = transform2Matrix $ worldModelTransform w
       clearBufferfv GL_COLOR 0 [r, g, 0, 1]
       clearDepthBuffer 1
       setModelTransform (mainProgram res) model
