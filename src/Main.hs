@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns          #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
@@ -61,7 +62,7 @@ instance HasSimulation World where
   setSimulation w sim = w { worldSimulation = sim }
 
 updateSimulation :: Simulation -> Milliseconds -> Simulation
-updateSimulation sim dt =
+updateSimulation sim !dt =
   let time = simTime sim
       currentTime = dt + timeCurrent time
       acc = simAccumulatedTime sim
@@ -189,9 +190,9 @@ data Time = Time
   }
 
 data Simulation = Simulation
-  { simTime :: Time
-  , simAccumulatedTime :: Milliseconds
-  , simFrame :: Int
+  { simTime :: !Time
+  , simAccumulatedTime :: !Milliseconds
+  , simFrame :: !Int
   }
 
 simulation :: Simulation
