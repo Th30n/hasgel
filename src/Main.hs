@@ -117,7 +117,6 @@ main =
       glVertexAttribPointer 0 3 GL_FLOAT GL_FALSE 0 nullPtr
       glEnableVertexAttribArray 0
       indexBuf <- genIndexBuffer cube
-      uniformProjection $ mainProgram res
       glEnable GL_DEPTH_TEST
       current <- SDL.getTicks
       let [q1, q2, q3, q4] = timeQueries res
@@ -130,35 +129,41 @@ main =
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
 
+mainProgramDesc :: Res.ProgramDesc
+mainProgramDesc = [("shaders/basic.vert", VertexShader),
+                   ("shaders/basic.frag", FragmentShader)]
+
+axisProgramDesc :: Res.ProgramDesc
+axisProgramDesc = [("shaders/axis.vert", VertexShader),
+                   ("shaders/axis.frag", FragmentShader)]
+
 data Resources = Resources
   { texture :: Texture
-  , mainProgram :: Program
-  , axisProgram :: Program
   , timeQueries :: [Query]
   , resShaders :: Res.Shaders
+  , resPrograms :: Res.Programs
   }
 
 instance Res.HasShaders Resources where
   getShaders = resShaders
   setShaders res shaders = res { resShaders = shaders }
 
+instance Res.HasPrograms Resources where
+  getPrograms = resPrograms
+  setPrograms res programs = res { resPrograms = programs }
+
 loadResources :: MonadIO m => m Resources
 loadResources = do
     tex <- loadTexture "share/gfx/checker.bmp"
-    program <- compileProgram [("shaders/basic.vert", VertexShader),
-                               ("shaders/basic.frag", FragmentShader)]
-    axis <- compileProgram [("shaders/axis.vert", VertexShader),
-                            ("shaders/axis.frag", FragmentShader)]
     qs <- gens 4
-    pure $ Resources tex program axis qs Res.emptyShaders
+    pure $ Resources tex qs Res.emptyShaders Res.emptyPrograms
 
 freeResources :: MonadIO m => Resources -> m ()
 freeResources res = do
   delete $ texture res
-  delete $ mainProgram res
-  delete $ axisProgram res
   deletes $ timeQueries res
   void $ execStateT Res.freeShaders res
+  void $ execStateT Res.freePrograms res
 
 type Milliseconds = Word32
 
@@ -178,6 +183,11 @@ instance Res.HasShaders World where
   getShaders = resShaders . resources
   setShaders w shaders = let res = resources w
                          in w { resources = res { resShaders = shaders } }
+
+instance Res.HasPrograms World where
+  getPrograms = resPrograms . resources
+  setPrograms w programs = let res = resources w
+                           in w { resources = res { resPrograms = programs } }
 
 instance FT.HasFrameTimer World where
   getFrameTimer = worldFrameTimer
@@ -213,10 +223,10 @@ loop = do
     getEvents >>= mapM_ handleEvent
     gets (timeDelta . worldTime) >>= simulate
     w <- get
-    _ <- Res.loadShader "shaders/basic.frag" FragmentShader
+    mainProg <- Res.loadProgram mainProgramDesc
+    uniformProjection mainProg
     renderDisplay (display w) . FT.withFrameTimer $ do
-      let res = resources w
-      useProgram $ mainProgram res
+      useProgram mainProg
       let current = fromIntegral (timeCurrent $ worldTime w) / 1000
           r = 0.5 + 0.5 * sin current
           g = 0.5 + 0.5 * cos current
@@ -224,9 +234,9 @@ loop = do
           model = transform2M44 $ worldModelTransform w
       clearBufferfv GL_COLOR 0 [r, g, 0, 1]
       clearDepthBuffer 1
-      setModelTransform (mainProgram res) model
+      setModelTransform mainProg model
       drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
-      useProgram $ axisProgram res
+      useProgram  =<< Res.loadProgram axisProgramDesc
       glDrawArrays GL_LINES 0 6
       throwError
     displayFrameRate
@@ -269,16 +279,6 @@ updateTime = do
 handleEvent :: MonadState World m => MySDL.Event -> m ()
 handleEvent (MySDL.QuitEvent _ _) = modify $ \w -> w { loopState = Quit }
 handleEvent _ = pure ()
-
-compileProgram :: MonadIO m => [(FilePath, ShaderType)] -> m Program
-compileProgram files = do
-  shaders <- mapM readShader files
-  program <- linkProgram shaders
-  deletes shaders
-  pure program
-  where readShader (file, shaderType) = do
-          src <- liftIO $ readFile file
-          compileShader src shaderType
 
 loadTexture :: MonadIO m => FilePath -> m Texture
 loadTexture file = do

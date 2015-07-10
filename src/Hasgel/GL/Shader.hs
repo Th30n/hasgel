@@ -30,7 +30,7 @@ data ShaderType =
   | TessEvaluationShader
   | GeometryShader
   | FragmentShader
-  deriving (Show)
+  deriving (Show, Ord, Eq)
 
 -- | Transform from 'ShaderType' to raw 'GLenum' representation.
 marshalShaderType :: ShaderType -> GLenum
