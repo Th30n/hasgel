@@ -56,22 +56,33 @@ createShader shaderType = do
     CreationError $ "Error creating shader of type " <> show shaderType
   pure $ Shader shader
 
+shaderSource :: MonadIO m => Shader -> String -> m ()
+shaderSource shader source =
+  liftIO . withCAString source $ \str ->
+    withArray [str] $ \srcArray ->
+      glShaderSource (object shader) 1 srcArray nullPtr
+
 -- | Creates shader object of given type and compiles it with given source.
 -- Shader object must be deleted after use.
 -- Throws 'CompileError' or 'CreationError' on failure.
 compileShader :: MonadIO m => String -> ShaderType -> m Shader
 compileShader source shaderType = do
   shader <- createShader shaderType
-  liftIO . withCAString source $ \str ->
-    withArray [str] $ \srcArray ->
-      glShaderSource (object shader) 1 srcArray nullPtr
+  shaderSource shader source
   glCompileShader $ object shader
+  status <- getShaderCompileStatus shader
+  case status of
+    Right _ -> pure shader
+    Left compileLog -> do
+      delete shader
+      liftIO . throwIO $ CompileError compileLog
+
+getShaderCompileStatus :: MonadIO m => Shader -> m (Either String ())
+getShaderCompileStatus shader = do
   status <- getShaderiv shader GL_COMPILE_STATUS
-  when (status == GL_FALSE) $ do
-    compileLog <- getShaderInfoLog shader
-    delete shader
-    liftIO . throwIO $ CompileError compileLog
-  pure shader
+  case status of
+    GL_TRUE -> pure $ Right ()
+    _ -> Left <$> getShaderInfoLog shader
 
 -- | Returns the information log for a shader object.
 getShaderInfoLog :: MonadIO m => Shader -> m String

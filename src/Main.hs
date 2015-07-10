@@ -16,6 +16,7 @@ import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
 import Hasgel.GL
 import Hasgel.Mesh (Face (..), Mesh (..), cube)
+import qualified Hasgel.Resources as Res
 import qualified Hasgel.SDL as MySDL
 import Hasgel.Transform (Transform (..), transform2M44)
 
@@ -134,7 +135,12 @@ data Resources = Resources
   , mainProgram :: Program
   , axisProgram :: Program
   , timeQueries :: [Query]
+  , resShaders :: Res.Shaders
   }
+
+instance Res.HasShaders Resources where
+  getShaders = resShaders
+  setShaders res shaders = res { resShaders = shaders }
 
 loadResources :: MonadIO m => m Resources
 loadResources = do
@@ -144,7 +150,7 @@ loadResources = do
     axis <- compileProgram [("shaders/axis.vert", VertexShader),
                             ("shaders/axis.frag", FragmentShader)]
     qs <- gens 4
-    pure $ Resources tex program axis qs
+    pure $ Resources tex program axis qs Res.emptyShaders
 
 freeResources :: MonadIO m => Resources -> m ()
 freeResources res = do
@@ -152,6 +158,7 @@ freeResources res = do
   delete $ mainProgram res
   delete $ axisProgram res
   deletes $ timeQueries res
+  void $ execStateT Res.freeShaders res
 
 type Milliseconds = Word32
 
@@ -166,6 +173,11 @@ data World = World
   , worldModelTransform :: Transform
   , worldSimulation :: Simulation
   }
+
+instance Res.HasShaders World where
+  getShaders = resShaders . resources
+  setShaders w shaders = let res = resources w
+                         in w { resources = res { resShaders = shaders } }
 
 instance FT.HasFrameTimer World where
   getFrameTimer = worldFrameTimer
@@ -201,6 +213,7 @@ loop = do
     getEvents >>= mapM_ handleEvent
     gets (timeDelta . worldTime) >>= simulate
     w <- get
+    _ <- Res.loadShader "shaders/basic.frag" FragmentShader
     renderDisplay (display w) . FT.withFrameTimer $ do
       let res = resources w
       useProgram $ mainProgram res
