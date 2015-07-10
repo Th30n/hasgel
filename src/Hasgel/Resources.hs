@@ -1,14 +1,20 @@
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+
 module Hasgel.Resources (
-  Shaders, HasShaders(..), HasPrograms(..), Programs, ProgramDesc, ShaderDesc,
-  emptyShaders, loadShader, freeShaders,
+  HasPrograms(..), Programs, ProgramDesc, ShaderDesc,
   emptyPrograms, loadProgram, freePrograms
 ) where
 
+import Control.Exception (Exception (..))
+import Control.Exception.Lifted (catch)
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.State (MonadState (..), gets, modify)
+import Control.Monad.Trans.Control (MonadBaseControl)
 import qualified Data.Map.Strict as M
+import Data.Time (UTCTime)
 import System.Directory (getModificationTime)
-import Control.Monad.IO.Class (MonadIO(..))
-import Control.Monad.State (MonadState(..), gets, modify)
-import Data.Time(UTCTime)
 
 import qualified Hasgel.GL as GL
 
@@ -16,65 +22,46 @@ type ModificationTime = UTCTime
 type ShaderDesc = (FilePath, GL.ShaderType)
 type ProgramDesc = [ShaderDesc]
 
-newtype Shaders = Shaders
-  { shadersMap :: M.Map FilePath (GL.Shader, ModificationTime) }
+data Programs = Programs
+  { programsMap :: M.Map [ShaderDesc] (GL.Program, ModificationTime)
+  , shadersMap :: M.Map FilePath GL.Shader }
   deriving (Show)
 
-newtype Programs = Programs
-  { programsMap :: M.Map [ShaderDesc] (GL.Program, ModificationTime) }
-  deriving (Show)
-
-class HasShaders s where
-  getShaders :: s -> Shaders
-  setShaders :: s -> Shaders -> s
-
-class HasShaders s => HasPrograms s where
+class HasPrograms s where
   getPrograms :: s -> Programs
   setPrograms :: s -> Programs -> s
 
-emptyShaders :: Shaders
-emptyShaders = Shaders M.empty
-
-loadShader :: (HasShaders s, MonadIO m, MonadState s m) =>
+loadShader :: (HasPrograms s, MonadIO m, MonadBaseControl IO m, MonadState s m) =>
               ShaderDesc -> m GL.Shader
 loadShader desc@(file, _) = do
-  shaders <- gets getShaders
-  let mbShader = M.lookup file $ shadersMap shaders
+  programs <- gets getPrograms
+  let mbShader = M.lookup file $ shadersMap programs
   case mbShader of
     Nothing -> insertShader desc
-    Just (shader, modTime) -> reloadShader desc modTime shader
+    Just shader -> reloadShader desc shader
 
-insertShader :: (HasShaders s, MonadIO m, MonadState s m) =>
-                ShaderDesc -> m GL.Shader
+insertShader :: (HasPrograms s, MonadIO m, MonadBaseControl IO m,
+                 MonadState s m) => ShaderDesc -> m GL.Shader
 insertShader (file, shaderType) = do
   src <- liftIO $ readFile file
   shader <- GL.compileShader src shaderType
-  shaders <- gets getShaders
-  modTime <- liftIO $ getModificationTime file
-  let shadersMap' = M.insert file (shader, modTime) $ shadersMap shaders
-      shaders' = shaders { shadersMap = shadersMap' }
-  modify $ flip setShaders shaders'
+  programs <- gets getPrograms
+  let shadersMap' = M.insert file shader $ shadersMap programs
+      programs' = programs { shadersMap = shadersMap' }
+  modify $ flip setPrograms programs'
   pure shader
 
-freeShaders :: (HasShaders s, MonadIO m, MonadState s m) => m ()
-freeShaders = do
-  mapM_ (GL.delete . fst) . shadersMap =<< gets getShaders
-  modify . flip setShaders $ Shaders M.empty
-
-reloadShader :: (HasShaders s, MonadIO m, MonadState s m) =>
-                ShaderDesc -> ModificationTime -> GL.Shader -> m GL.Shader
-reloadShader desc@(file, _) lastModTime lastShader = do
-  newModTime <- liftIO $ getModificationTime file
-  if newModTime <= lastModTime
-    then pure lastShader
-    else do GL.delete lastShader
-            insertShader desc
+reloadShader :: (HasPrograms s, MonadIO m, MonadBaseControl IO m,
+                 MonadState s m) => ShaderDesc -> GL.Shader -> m GL.Shader
+reloadShader desc@(file, _) lastShader = do
+  src <- liftIO $ readFile file
+  GL.recompileShader lastShader src
 
 emptyPrograms :: Programs
-emptyPrograms = Programs M.empty
+emptyPrograms = Programs M.empty M.empty
 
-loadProgram :: (HasPrograms s, MonadIO m, MonadState s m) =>
-               ProgramDesc -> m GL.Program
+loadProgram :: (HasPrograms s, MonadIO m, MonadBaseControl IO m,
+                MonadState s m) => ProgramDesc -> m GL.Program
 loadProgram files = do
   programs <- gets getPrograms
   let mbProgram = M.lookup files $ programsMap programs
@@ -82,8 +69,8 @@ loadProgram files = do
     Nothing -> insertProgram files
     Just (program, modTime) -> reloadProgram files modTime program
 
-insertProgram :: (HasPrograms s, MonadIO m, MonadState s m) =>
-                 ProgramDesc -> m GL.Program
+insertProgram :: (HasPrograms s, MonadIO m, MonadBaseControl IO m,
+                  MonadState s m) => ProgramDesc -> m GL.Program
 insertProgram files = do
   loadedShaders <- mapM loadShader files
   program <- GL.linkProgram loadedShaders
@@ -96,16 +83,31 @@ insertProgram files = do
   where latestModificationTime =
           fmap maximum . mapM (getModificationTime . fst)
 
-freePrograms :: (HasPrograms s, MonadIO m, MonadState s m) => m ()
-freePrograms = do
-  mapM_ (GL.delete . fst) . programsMap =<< gets getPrograms
-  modify . flip setPrograms $ Programs M.empty
+freePrograms :: MonadIO m => Programs -> m Programs
+freePrograms programs = do
+  liftIO $ putStrLn "Freeing shader programs"
+  mapM_ GL.delete $ shadersMap programs
+  mapM_ (GL.delete . fst) $ programsMap programs
+  pure $ Programs M.empty M.empty
 
-reloadProgram :: (HasPrograms s, MonadIO m, MonadState s m) =>
+reloadProgram :: (HasPrograms s, MonadIO m, MonadBaseControl IO m,
+                  MonadState s m) =>
                  ProgramDesc -> ModificationTime -> GL.Program -> m GL.Program
 reloadProgram desc lastModTime lastProgram = do
   newModTime <- liftIO $ maximum <$> mapM (getModificationTime . fst) desc
   if newModTime <= lastModTime
     then pure lastProgram
-    else do GL.delete lastProgram
-            insertProgram desc
+    else do liftIO $ putStrLn "Reloading shader program"
+            reloadProgram' `catch` \(e :: GL.ShaderException)  -> do
+              liftIO . putStrLn $ displayException e
+              programs <- gets getPrograms
+              let programsMap' = M.insert desc (lastProgram, newModTime) $
+                                 programsMap programs
+                  programs' = programs { programsMap = programsMap' }
+              modify $ flip setPrograms programs'
+              pure lastProgram
+  where reloadProgram' = do
+          prog <- insertProgram desc
+          GL.delete lastProgram
+          pure prog
+

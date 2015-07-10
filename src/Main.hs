@@ -5,6 +5,7 @@ module Main ( main ) where
 
 import Control.Exception (bracket)
 import Control.Monad.State
+import Control.Monad.Trans.Control
 import Data.Word (Word32)
 import Foreign (nullPtr)
 import Graphics.GL.Core45
@@ -140,13 +141,8 @@ axisProgramDesc = [("shaders/axis.vert", VertexShader),
 data Resources = Resources
   { texture :: Texture
   , timeQueries :: [Query]
-  , resShaders :: Res.Shaders
   , resPrograms :: Res.Programs
   }
-
-instance Res.HasShaders Resources where
-  getShaders = resShaders
-  setShaders res shaders = res { resShaders = shaders }
 
 instance Res.HasPrograms Resources where
   getPrograms = resPrograms
@@ -156,14 +152,13 @@ loadResources :: MonadIO m => m Resources
 loadResources = do
     tex <- loadTexture "share/gfx/checker.bmp"
     qs <- gens 4
-    pure $ Resources tex qs Res.emptyShaders Res.emptyPrograms
+    pure $ Resources tex qs Res.emptyPrograms
 
 freeResources :: MonadIO m => Resources -> m ()
 freeResources res = do
   delete $ texture res
   deletes $ timeQueries res
-  void $ execStateT Res.freeShaders res
-  void $ execStateT Res.freePrograms res
+  void . Res.freePrograms $ resPrograms res
 
 type Milliseconds = Word32
 
@@ -178,11 +173,6 @@ data World = World
   , worldModelTransform :: Transform
   , worldSimulation :: Simulation
   }
-
-instance Res.HasShaders World where
-  getShaders = resShaders . resources
-  setShaders w shaders = let res = resources w
-                         in w { resources = res { resShaders = shaders } }
 
 instance Res.HasPrograms World where
   getPrograms = resPrograms . resources
@@ -216,7 +206,7 @@ createWorld time disp res ft =
           worldModelTransform = Transform L.zero (L.V3 0 0 (-5)),
           worldSimulation = simulation }
 
-loop :: (MonadIO m, MonadState World m) => m ()
+loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
 loop = do
   ls <- gets loopState
   when (ls /= Quit) $ do

@@ -1,9 +1,9 @@
 module Hasgel.GL.Shader (
   Shader(..), ShaderException(..), ShaderType(..),
-  compileShader
+  compileShader, recompileShader
 ) where
 
-import Control.Exception (Exception, throwIO)
+import Control.Exception (Exception, onException, throwIO)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Monoid ((<>))
@@ -68,14 +68,16 @@ shaderSource shader source =
 compileShader :: MonadIO m => String -> ShaderType -> m Shader
 compileShader source shaderType = do
   shader <- createShader shaderType
+  liftIO . onException (recompileShader shader source) $ delete shader
+
+recompileShader :: MonadIO m => Shader -> String -> m Shader
+recompileShader shader source = do
   shaderSource shader source
   glCompileShader $ object shader
   status <- getShaderCompileStatus shader
   case status of
     Right _ -> pure shader
-    Left compileLog -> do
-      delete shader
-      liftIO . throwIO $ CompileError compileLog
+    Left compileLog -> liftIO . throwIO $ CompileError compileLog
 
 getShaderCompileStatus :: MonadIO m => Shader -> m (Either String ())
 getShaderCompileStatus shader = do
