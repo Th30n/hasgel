@@ -97,7 +97,7 @@ setModelTransform prog model = do
   Just loc <- getUniformLocation prog "model"
   useProgram prog >> uniform loc model
 
-genIndexBuffer :: MonadIO m => Mesh -> m Buffer
+genIndexBuffer :: Mesh -> IO Buffer
 genIndexBuffer mesh = do
   let ixs = concatMap (map (\x -> x - 1) . faceVertexIx) $ meshFaces mesh
   buf <- gen
@@ -149,13 +149,13 @@ instance Res.HasPrograms Resources where
   getPrograms = resPrograms
   setPrograms res programs = res { resPrograms = programs }
 
-loadResources :: MonadIO m => m Resources
+loadResources :: IO Resources
 loadResources = do
     tex <- loadTexture "share/gfx/checker.bmp"
     qs <- gens 4
     pure $ Resources tex qs Res.emptyPrograms
 
-freeResources :: MonadIO m => Resources -> m ()
+freeResources :: Resources -> IO ()
 freeResources res = do
   delete $ texture res
   deletes $ timeQueries res
@@ -271,7 +271,7 @@ handleEvent :: MonadState World m => MySDL.Event -> m ()
 handleEvent (MySDL.QuitEvent _ _) = modify $ \w -> w { loopState = Quit }
 handleEvent _ = pure ()
 
-loadTexture :: MonadIO m => FilePath -> m Texture
+loadTexture :: FilePath -> IO Texture
 loadTexture file = do
   s <- MySDL.loadBMP file
   tex <- gen
