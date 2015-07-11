@@ -3,7 +3,7 @@ module Hasgel.GL.Shader (
   compileShader, recompileShader
 ) where
 
-import Control.Exception (Exception, onException, throwIO)
+import Control.Exception (Exception (..), onException, throwIO)
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Monoid ((<>))
@@ -47,7 +47,10 @@ data ShaderException =
   LinkError String
   deriving (Eq, Show, Typeable)
 
-instance Exception ShaderException
+instance Exception ShaderException where
+  displayException (CreationError msg) = "Creation error: " <> msg
+  displayException (CompileError msg) = "Compile error: " <> msg
+  displayException (LinkError msg) = "Link error: " <> msg
 
 createShader :: MonadIO m => ShaderType -> m Shader
 createShader shaderType = do
