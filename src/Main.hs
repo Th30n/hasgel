@@ -137,6 +137,7 @@ mainProgramDesc = [("shaders/basic.vert", VertexShader),
 
 axisProgramDesc :: Res.ProgramDesc
 axisProgramDesc = [("shaders/axis.vert", VertexShader),
+                   ("shaders/axis.geom", GeometryShader),
                    ("shaders/axis.frag", FragmentShader)]
 
 data Resources = Resources
@@ -228,7 +229,7 @@ loop = do
       setModelTransform mainProg model
       drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
       useProgram  =<< Res.loadProgram axisProgramDesc
-      glDrawArrays GL_LINES 0 6
+      glDrawArrays GL_POINTS 0 1
       throwError
     displayFrameRate
     updateTime
