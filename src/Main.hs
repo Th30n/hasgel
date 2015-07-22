@@ -37,8 +37,10 @@ persp = L.perspective fovy ar n f
 
 uniformProjection :: MonadIO m => Program -> m ()
 uniformProjection prog = do
-  Just loc <- getUniformLocation prog "proj"
-  useProgram prog >> uniform loc persp
+  mbLoc <- getUniformLocation prog "proj"
+  case mbLoc of
+    Just loc -> useProgram prog >> uniform loc persp
+    _ -> pure ()
 
 updateModelTransform :: Transform -> Time -> Transform
 updateModelTransform prev time =
@@ -233,6 +235,7 @@ loop = do
       useProgram axisProgram
       Just loc <- getUniformLocation axisProgram "rotation"
       uniform loc modelRot
+      uniformProjection axisProgram
       glDrawArrays GL_POINTS 0 1
       throwError
     displayFrameRate
