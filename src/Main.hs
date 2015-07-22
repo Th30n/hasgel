@@ -20,7 +20,7 @@ import Hasgel.GL
 import Hasgel.Mesh (Face (..), Mesh (..), cube)
 import qualified Hasgel.Resources as Res
 import qualified Hasgel.SDL as MySDL
-import Hasgel.Transform (Transform (..), transform2M44)
+import Hasgel.Transform (Transform (..), transform2M44, transformRotationM44)
 
 ortho :: L.M44 Float
 ortho = L.ortho (-2) 2 (-2) 2 (-2) 2
@@ -224,11 +224,15 @@ loop = do
           g = 0.5 + 0.5 * cos current
           vertexCount = 3 * length (meshFaces cube)
           model = transform2M44 $ worldModelTransform w
+          modelRot = transformRotationM44 $ worldModelTransform w
       clearBufferfv GL_COLOR 0 [r, g, 0, 1]
       clearDepthBuffer 1
       setModelTransform mainProg model
       drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
-      useProgram  =<< Res.loadProgram axisProgramDesc
+      axisProgram <- Res.loadProgram axisProgramDesc
+      useProgram axisProgram
+      Just loc <- getUniformLocation axisProgram "rotation"
+      uniform loc modelRot
       glDrawArrays GL_POINTS 0 1
       throwError
     displayFrameRate

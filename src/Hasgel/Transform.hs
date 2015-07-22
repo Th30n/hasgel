@@ -1,5 +1,5 @@
 module Hasgel.Transform (
-  Transform(..), transform2M44
+  Transform(..), transform2M44, transformRotationM44
 ) where
 
 import Control.Lens ((.~))
@@ -17,3 +17,6 @@ data Transform = Transform
     transformRotation :: L.Quaternion Float
   , transformPosition :: L.V3 Float
   }
+
+transformRotationM44 :: Transform -> L.M44 Float
+transformRotationM44 = L.m33_to_m44 . L.fromQuaternion . transformRotation
