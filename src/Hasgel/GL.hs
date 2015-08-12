@@ -5,7 +5,8 @@ module Hasgel.GL (
   VertexArray, Texture, Index(..), Buffer, BufferData(..),
   Query, GLError(..),
   getError, throwError,
-  vertexAttrib4f, clearBufferfv, clearDepthBuffer, bufferData,
+  vertexAttrib4f, vertexAttrib3f,
+  clearBufferfv, clearDepthBuffer, bufferData,
   drawElements,
   beginQuery, endQuery, getQueryResult, withQuery, queryCounter
 ) where
@@ -131,6 +132,9 @@ throwError = getError >>= \e -> when (e /= NoError) $ liftIO $ throwIO e
 vertexAttrib4f :: MonadIO m => Index ->
                   GLfloat -> GLfloat -> GLfloat -> GLfloat -> m ()
 vertexAttrib4f (Index index) = glVertexAttrib4f index
+
+vertexAttrib3f :: MonadIO m => Index -> GLfloat -> GLfloat -> GLfloat -> m ()
+vertexAttrib3f (Index index) = glVertexAttrib3f index
 
 clearBufferfv :: MonadIO m => ClearBuffer -> DrawBuffer -> [GLfloat] -> m ()
 clearBufferfv buffer drawBuffer values =

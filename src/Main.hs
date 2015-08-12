@@ -226,16 +226,15 @@ loop = do
           g = 0.5 + 0.5 * cos current
           vertexCount = 3 * length (meshFaces cube)
           model = transform2M44 $ worldModelTransform w
-          modelRot = transformRotationM44 $ worldModelTransform w
       clearBufferfv GL_COLOR 0 [r, g, 0, 1]
       clearDepthBuffer 1
       setModelTransform mainProg model
       drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
       axisProgram <- Res.loadProgram axisProgramDesc
       useProgram axisProgram
-      Just loc <- getUniformLocation axisProgram "rotation"
-      uniform loc modelRot
-      uniformProjection axisProgram
+      Just mvpLoc <- getUniformLocation axisProgram "mvp"
+      let mvp = persp L.!*! model
+      uniform mvpLoc mvp
       glDrawArrays GL_POINTS 0 1
       throwError
     displayFrameRate

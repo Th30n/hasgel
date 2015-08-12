@@ -16,7 +16,7 @@ data Transform = Transform
   {
     transformRotation :: L.Quaternion Float
   , transformPosition :: L.V3 Float
-  }
+  } deriving (Show)
 
 transformRotationM44 :: Transform -> L.M44 Float
 transformRotationM44 = L.m33_to_m44 . L.fromQuaternion . transformRotation
