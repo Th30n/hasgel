@@ -8,13 +8,14 @@ module Hasgel.Resources (
 ) where
 
 import Control.Exception (Exception (..))
-import Control.Exception.Lifted (catch)
+import Control.Exception.Lifted (catch, catchJust)
 import Control.Monad.Base (MonadBase (..))
 import Control.Monad.State (MonadState (..), gets, modify)
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import qualified Data.Map.Strict as M
 import Data.Time (UTCTime)
 import System.Directory (getModificationTime)
+import System.IO.Error (isDoesNotExistError, isPermissionError)
 
 import qualified Hasgel.GL as GL
 
@@ -86,21 +87,29 @@ freePrograms programs = do
 
 reloadProgram :: (HasPrograms s, MonadBaseControl IO m, MonadState s m) =>
                  ProgramDesc -> ModificationTime -> GL.Program -> m GL.Program
-reloadProgram desc lastModTime lastProgram = do
-  newModTime <- liftBase $ maximum <$> mapM (getModificationTime . fst) desc
-  if newModTime <= lastModTime
-    then pure lastProgram
-    else do liftBase $ putStrLn "Reloading shader program"
-            reloadProgram' `catch` \(e :: GL.ShaderException)  -> do
-              liftBase . putStrLn $ displayException e
-              programs <- gets getPrograms
-              let programsMap' = M.insert desc (lastProgram, newModTime) $
-                                 programsMap programs
-                  programs' = programs { programsMap = programsMap' }
-              modify $ flip setPrograms programs'
-              pure lastProgram
-  where reloadProgram' = do
-          prog <- insertProgram desc
-          liftBase $ GL.delete lastProgram
-          pure prog
+reloadProgram desc lastModTime lastProgram =
+  handleFileError lastProgram $ do
+    newModTime <- liftBase $ maximum <$> mapM (getModificationTime . fst) desc
+    if newModTime <= lastModTime
+      then pure lastProgram
+      else do liftBase $ putStrLn "Reloading shader program"
+              reloadProgram' `catch` \(e :: GL.ShaderException)  -> do
+                liftBase . putStrLn $ displayException e
+                programs <- gets getPrograms
+                let programsMap' = M.insert desc (lastProgram, newModTime) $
+                                   programsMap programs
+                    programs' = programs { programsMap = programsMap' }
+                modify $ flip setPrograms programs'
+                pure lastProgram
+      where reloadProgram' = do
+              prog <- insertProgram desc
+              liftBase $ GL.delete lastProgram
+              pure prog
 
+handleFileError :: MonadBaseControl IO m => a -> m a -> m a
+handleFileError def action = do
+  catchJust (\e -> if isDoesNotExistError e || isPermissionError e
+                   then Just e else Nothing)
+    action
+    (\e -> do liftBase . putStrLn $ displayException e
+              pure def)
