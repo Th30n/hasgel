@@ -15,6 +15,7 @@ import Control.Monad.Trans.Control (MonadBaseControl (..))
 import qualified Data.Map.Strict as M
 import Data.Time (UTCTime)
 import System.Directory (getModificationTime)
+import System.IO (hPutStrLn, stderr)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
 
 import qualified Hasgel.GL as GL
@@ -51,7 +52,7 @@ insertShader (file, shaderType) = do
   pure shader
 
 reloadShader :: ShaderDesc -> GL.Shader -> IO GL.Shader
-reloadShader desc@(file, _) lastShader =
+reloadShader (file, _) lastShader =
   readFile file >>= GL.recompileShader lastShader
 
 emptyPrograms :: Programs
@@ -94,7 +95,7 @@ reloadProgram desc lastModTime lastProgram =
       then pure lastProgram
       else do liftBase $ putStrLn "Reloading shader program"
               reloadProgram' `catch` \(e :: GL.ShaderException)  -> do
-                liftBase . putStrLn $ displayException e
+                liftBase . hPutStrLn stderr $ displayException e
                 programs <- gets getPrograms
                 let programsMap' = M.insert desc (lastProgram, newModTime) $
                                    programsMap programs
@@ -107,9 +108,9 @@ reloadProgram desc lastModTime lastProgram =
               pure prog
 
 handleFileError :: MonadBaseControl IO m => a -> m a -> m a
-handleFileError def action = do
+handleFileError def action =
   catchJust (\e -> if isDoesNotExistError e || isPermissionError e
                    then Just e else Nothing)
     action
-    (\e -> do liftBase . putStrLn $ displayException e
+    (\e -> do liftBase . hPutStrLn stderr $ displayException e
               pure def)
