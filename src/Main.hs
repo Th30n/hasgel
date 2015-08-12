@@ -6,7 +6,7 @@ module Main ( main ) where
 
 import Control.Exception (bracket)
 import Control.Monad.State
-import Control.Monad.Trans.Control
+import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Word (Word32)
 import Foreign (nullPtr)
 import Graphics.GL.Core45
@@ -198,6 +198,8 @@ data Simulation = Simulation
   , simFrame :: !Int
   }
 
+type Renderer = IO ()
+
 simulation :: Simulation
 simulation = Simulation { simTime = Time 0 simulationStep,
                           simAccumulatedTime = 0,
@@ -217,29 +219,39 @@ loop = do
     getEvents >>= mapM_ handleEvent
     gets (timeDelta . worldTime) >>= simulate
     w <- get
-    mainProg <- Res.loadProgram mainProgramDesc
-    uniformProjection mainProg
+    renderActions <- sequence [cubeRenderer, axisRenderer]
     renderDisplay (display w) . FT.withFrameTimer $ do
-      useProgram mainProg
-      let current = fromIntegral (timeCurrent $ worldTime w) / 1000
-          r = 0.5 + 0.5 * sin current
-          g = 0.5 + 0.5 * cos current
-          vertexCount = 3 * length (meshFaces cube)
-          model = transform2M44 $ worldModelTransform w
-      clearBufferfv GL_COLOR 0 [r, g, 0, 1]
-      clearDepthBuffer 1
-      setModelTransform mainProg model
-      drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
-      axisProgram <- Res.loadProgram axisProgramDesc
-      useProgram axisProgram
-      Just mvpLoc <- getUniformLocation axisProgram "mvp"
-      let mvp = persp L.!*! model
-      uniform mvpLoc mvp
-      glDrawArrays GL_POINTS 0 1
+      liftIO $ sequence_ renderActions
       throwError
     displayFrameRate
     updateTime
     loop
+
+axisRenderer :: (MonadBaseControl IO m, MonadState World m) => m Renderer
+axisRenderer = do
+  w <- get
+  axisProgram <- Res.loadProgram axisProgramDesc
+  pure $ do
+    useProgram axisProgram
+    Just mvpLoc <- getUniformLocation axisProgram "mvp"
+    let model = transform2M44 $ worldModelTransform w
+        mvp = persp L.!*! model
+    uniform mvpLoc mvp
+    glDrawArrays GL_POINTS 0 1
+
+cubeRenderer :: (MonadBaseControl IO m, MonadState World m) => m Renderer
+cubeRenderer = do
+  mainProg <- Res.loadProgram mainProgramDesc
+  w <- get
+  pure $ do
+    useProgram mainProg
+    uniformProjection mainProg
+    let vertexCount = 3 * length (meshFaces cube)
+        model = transform2M44 $ worldModelTransform w
+    clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
+    clearDepthBuffer 1
+    setModelTransform mainProg model
+    drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
 
 timerInterval :: Milliseconds
 timerInterval = 500
