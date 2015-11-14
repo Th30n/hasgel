@@ -21,7 +21,7 @@ import Foreign.C.Types (CInt)
 import Foreign.Ptr (Ptr, nullPtr)
 import Foreign.Storable (peek)
 
-import qualified Graphics.UI.SDL as SDL
+import qualified SDL.Raw as SDL
 
 import Hasgel.SDL.Basic
 import Hasgel.SDL.BitFlag

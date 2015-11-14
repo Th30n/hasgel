@@ -11,7 +11,7 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Storable (peek)
 
-import qualified Graphics.UI.SDL as SDL
+import qualified SDL.Raw as SDL
 
 type Event = SDL.Event
 

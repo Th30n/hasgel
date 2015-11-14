@@ -24,8 +24,7 @@ import Foreign.C.String (peekCString)
 import Foreign.C.Types (CInt)
 import Prelude hiding (init)
 
-import qualified Graphics.UI.SDL.Basic as SDL
-import qualified Graphics.UI.SDL.Enum as SDL
+import qualified SDL.Raw as SDL
 
 import Hasgel.SDL.BitFlag
 
