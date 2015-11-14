@@ -10,8 +10,8 @@ import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Word (Word32)
 import Foreign (nullPtr)
 import Graphics.GL.Core45
-import qualified Graphics.UI.SDL as SDL
 import qualified Linear as L
+import qualified SDL.Raw as SDL
 import Text.Printf (printf)
 
 import Hasgel.Display
@@ -49,9 +49,11 @@ updateModelTransform prev time =
       rot = L.axisAngle (L.V3 1 1 0) $ deg2Rad angle
   in prev { transformRotation = rot }
 
+-- | Time step which is simulated.
 simulationStep :: Milliseconds
 simulationStep = 20
 
+-- | Maximum number of frames that will be simulated between rendering.
 maxFrameSkip :: Int
 maxFrameSkip = 10
 
@@ -63,6 +65,7 @@ instance HasSimulation World where
   getSimulation = worldSimulation
   setSimulation w sim = w { worldSimulation = sim }
 
+-- | Update the simulation time and frame count.
 updateSimulation :: Simulation -> Milliseconds -> Simulation
 updateSimulation sim !dt =
   let time = simTime sim
@@ -73,6 +76,9 @@ updateSimulation sim !dt =
            simAccumulatedTime = acc - dt,
            simFrame = frames + 1 }
 
+-- | Run the simulation update for given time step until the simulation time
+-- is exhausted or 'maxFrameSkip' reached. Update simulates 'simulationStep'
+-- amount of time, if given time step is less than that there may be no update.
 simulate :: MonadState World m => Milliseconds -> m ()
 simulate dt = do
   acc <- gets $ (dt +) . simAccumulatedTime . getSimulation
@@ -192,10 +198,11 @@ data Time = Time
   , timeDelta :: Milliseconds
   }
 
+-- | Stores time and frame details of the simulation.
 data Simulation = Simulation
-  { simTime :: !Time
-  , simAccumulatedTime :: !Milliseconds
-  , simFrame :: !Int
+  { simTime :: !Time -- ^ Total elapsed time since the start.
+  , simAccumulatedTime :: !Milliseconds -- ^ Accumulated unsimulated time.
+  , simFrame :: !Int -- ^ Total number of simulated frames.
   }
 
 type Renderer = IO ()
