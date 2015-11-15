@@ -11,12 +11,13 @@ import Data.Word (Word32)
 import Foreign (nullPtr)
 import Graphics.GL.Core45
 import qualified Linear as L
-import qualified SDL.Raw as SDL
+import qualified SDL
 import Text.Printf (printf)
 
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
 import Hasgel.GL
+import Hasgel.Input (InputEvent (..), getEvents)
 import Hasgel.Mesh (Face (..), Mesh (..), cube)
 import qualified Hasgel.Resources as Res
 import qualified Hasgel.SDL as MySDL
@@ -128,7 +129,7 @@ main =
       glEnableVertexAttribArray 0
       indexBuf <- genIndexBuffer cube
       glEnable GL_DEPTH_TEST
-      current <- SDL.getTicks
+      current <- SDL.ticks
       let [q1, q2, q3, q4] = timeQueries res
           ft = FT.createFrameTimer ((q1, q2), (q3, q4)) current
       void . execStateT loop $ createWorld current d res ft
@@ -182,6 +183,7 @@ data World = World
   , worldFrameTimer :: FT.FrameTimer
   , worldModelTransform :: Transform
   , worldSimulation :: Simulation
+  , worldPlayerCmds :: [PlayerCmd]
   }
 
 instance Res.HasPrograms World where
@@ -217,13 +219,13 @@ createWorld time disp res ft =
   World { loopState = Continue, display = disp, worldTime = Time time 0,
           resources = res, worldFrameTimer = ft,
           worldModelTransform = Transform L.zero (L.V3 0 0 (-5)),
-          worldSimulation = simulation }
+          worldSimulation = simulation, worldPlayerCmds = [] }
 
 loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
 loop = do
   ls <- gets loopState
   when (ls /= Quit) $ do
-    getEvents >>= mapM_ handleEvent
+    liftIO getEvents >>= mapM_ handleEvent
     gets (timeDelta . worldTime) >>= simulate
     w <- get
     renderActions <- sequence [cubeRenderer, axisRenderer]
@@ -279,23 +281,25 @@ displayFrameRate = do
     MySDL.setWindowTitle win title
     modify . flip FT.setFrameTimer $ FT.resetFrameTimer ft time
 
-getEvents :: MonadIO m => m [MySDL.Event]
-getEvents = MySDL.pollEvent >>= collect
-  where collect :: MonadIO m => Maybe MySDL.Event -> m [MySDL.Event]
-        collect Nothing = pure []
-        collect (Just e) = (e:) <$> getEvents
-
 updateTime :: (MonadIO m, MonadState World m) => m ()
 updateTime = do
-  newTime <- SDL.getTicks
+  newTime <- SDL.ticks
   time <- gets worldTime
   let oldTime = timeCurrent time
   modify $ \w -> w { worldTime = time { timeCurrent = newTime,
                                         timeDelta = newTime - oldTime } }
 
-handleEvent :: MonadState World m => MySDL.Event -> m ()
-handleEvent (MySDL.QuitEvent _ _) = modify $ \w -> w { loopState = Quit }
+handleEvent :: (MonadIO m, MonadState World m) => InputEvent -> m ()
+handleEvent QuitEvent = modify $ \w -> w { loopState = Quit }
+handleEvent (KeyPressedEvent key) = liftIO $ printf "Pressed %s\n" (show key)
+handleEvent (KeyReleasedEvent key) = liftIO $ printf "Released %s\n" (show key)
 handleEvent _ = pure ()
+
+-- | Player control commands.
+data PlayerCmd =
+  MoveLeft
+  | MoveRight
+  deriving (Show, Ord, Eq)
 
 loadTexture :: FilePath -> IO Texture
 loadTexture file = do
