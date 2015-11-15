@@ -7,6 +7,8 @@ module Main ( main ) where
 import Control.Exception (bracket)
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Word (Word32)
 import Foreign (nullPtr)
 import Graphics.GL.Core45
@@ -17,14 +19,14 @@ import Text.Printf (printf)
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
 import Hasgel.GL
-import Hasgel.Input (InputEvent (..), getEvents)
+import Hasgel.Input (InputEvent (..), KeyboardKey (..), getEvents)
 import Hasgel.Mesh (Face (..), Mesh (..), cube)
 import qualified Hasgel.Resources as Res
 import qualified Hasgel.SDL as MySDL
-import Hasgel.Transform (Transform (..), transform2M44, transformRotationM44)
+import Hasgel.Transform (Transform (..), transform2M44, translate)
 
 ortho :: L.M44 Float
-ortho = L.ortho (-2) 2 (-2) 2 (-2) 2
+ortho = L.ortho (-10) 10 (-10) 10 (-10) 10
 
 deg2Rad :: Floating a => a -> a
 deg2Rad = ((pi / 180) *)
@@ -40,7 +42,7 @@ uniformProjection :: MonadIO m => Program -> m ()
 uniformProjection prog = do
   mbLoc <- getUniformLocation prog "proj"
   case mbLoc of
-    Just loc -> useProgram prog >> uniform loc persp
+    Just loc -> useProgram prog >> uniform loc ortho
     _ -> pure ()
 
 updateModelTransform :: Transform -> Time -> Transform
@@ -92,14 +94,28 @@ simulate dt = do
                         | otherwise = do
                             model <- gets worldModelTransform
                             sim <- gets getSimulation
+                            cmds <- gets worldPlayerCmds
                             let time = simTime sim
-                                model' = updateModelTransform model time
+                                model' = updatePlayer model time cmds
                                 acc' = acc - simulationStep
                             modify $ \w -> w {
                               worldModelTransform = model',
                               worldSimulation =
                                 updateSimulation sim simulationStep }
                             simulate' acc' $ i + 1
+
+millis2Sec :: Fractional a => Milliseconds -> a
+millis2Sec = (0.001 *) . fromIntegral
+
+updatePlayer :: Transform -> Time -> Set PlayerCmd -> Transform
+updatePlayer prev time cmds = foldl cmdPlayer prev cmds
+  where playerSpeed = 4 * millis2Sec (timeDelta time)
+        cmdPlayer trans MoveLeft = movePlayer trans (-playerSpeed)
+        cmdPlayer trans MoveRight = movePlayer trans playerSpeed
+        cmdPlayer trans _ = trans
+
+movePlayer :: Transform -> Float -> Transform
+movePlayer prev dx = translate prev $ L.V3 dx 0 0
 
 setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
 setModelTransform prog model = do
@@ -183,7 +199,7 @@ data World = World
   , worldFrameTimer :: FT.FrameTimer
   , worldModelTransform :: Transform
   , worldSimulation :: Simulation
-  , worldPlayerCmds :: [PlayerCmd]
+  , worldPlayerCmds :: Set PlayerCmd
   }
 
 instance Res.HasPrograms World where
@@ -219,7 +235,7 @@ createWorld time disp res ft =
   World { loopState = Continue, display = disp, worldTime = Time time 0,
           resources = res, worldFrameTimer = ft,
           worldModelTransform = Transform L.zero (L.V3 0 0 (-5)),
-          worldSimulation = simulation, worldPlayerCmds = [] }
+          worldSimulation = simulation, worldPlayerCmds = Set.empty }
 
 loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
 loop = do
@@ -244,7 +260,7 @@ axisRenderer = do
     useProgram axisProgram
     Just mvpLoc <- getUniformLocation axisProgram "mvp"
     let model = transform2M44 $ worldModelTransform w
-        mvp = persp L.!*! model
+        mvp = ortho L.!*! model
     uniform mvpLoc mvp
     glDrawArrays GL_POINTS 0 1
 
@@ -291,7 +307,11 @@ updateTime = do
 
 handleEvent :: (MonadIO m, MonadState World m) => InputEvent -> m ()
 handleEvent QuitEvent = modify $ \w -> w { loopState = Quit }
+handleEvent (KeyPressedEvent KeyLeft) = modify $ insertCmd MoveLeft
+handleEvent (KeyPressedEvent KeyRight) = modify $ insertCmd MoveRight
 handleEvent (KeyPressedEvent key) = liftIO $ printf "Pressed %s\n" (show key)
+handleEvent (KeyReleasedEvent KeyLeft) = modify $ deleteCmd MoveLeft
+handleEvent (KeyReleasedEvent KeyRight) = modify $ deleteCmd MoveRight
 handleEvent (KeyReleasedEvent key) = liftIO $ printf "Released %s\n" (show key)
 handleEvent _ = pure ()
 
@@ -299,7 +319,16 @@ handleEvent _ = pure ()
 data PlayerCmd =
   MoveLeft
   | MoveRight
+  | Shoot
   deriving (Show, Ord, Eq)
+
+insertCmd :: PlayerCmd -> World -> World
+insertCmd cmd w = let cmds = worldPlayerCmds w
+                  in w { worldPlayerCmds = Set.insert cmd cmds }
+
+deleteCmd :: PlayerCmd -> World -> World
+deleteCmd cmd w = let cmds = worldPlayerCmds w
+                  in w { worldPlayerCmds = Set.delete cmd cmds }
 
 loadTexture :: FilePath -> IO Texture
 loadTexture file = do
