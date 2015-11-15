@@ -33,16 +33,22 @@ deg2Rad = ((pi / 180) *)
 
 persp :: L.M44 Float
 persp = L.perspective fovy ar n f
-        where fovy = deg2Rad 75
+        where fovy = deg2Rad 60
               ar = 800 / 600
               n = 0.1
               f = 100
+
+camera :: L.M44 Float
+camera = L.lookAt eye center up
+  where eye = L.V3 0 0 1
+        center = L.V3 0 0 0
+        up = L.V3 0 1 0
 
 uniformProjection :: MonadIO m => Program -> m ()
 uniformProjection prog = do
   mbLoc <- getUniformLocation prog "proj"
   case mbLoc of
-    Just loc -> useProgram prog >> uniform loc ortho
+    Just loc -> useProgram prog >> uniform loc (persp L.!*! camera)
     _ -> pure ()
 
 updateModelTransform :: Transform -> Time -> Transform
@@ -260,7 +266,7 @@ axisRenderer = do
     useProgram axisProgram
     Just mvpLoc <- getUniformLocation axisProgram "mvp"
     let model = transform2M44 $ worldModelTransform w
-        mvp = ortho L.!*! model
+        mvp = persp L.!*! camera L.!*! model
     uniform mvpLoc mvp
     glDrawArrays GL_POINTS 0 1
 
