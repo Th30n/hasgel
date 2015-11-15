@@ -234,7 +234,7 @@ createWorld :: Milliseconds -> Display -> Resources -> FT.FrameTimer -> World
 createWorld time disp res ft =
   World { loopState = Continue, display = disp, worldTime = Time time 0,
           resources = res, worldFrameTimer = ft,
-          worldModelTransform = Transform L.zero (L.V3 0 0 (-5)),
+          worldModelTransform = Transform L.zero (L.V3 0.5 0.5 0.5) (L.V3 0 0 (-5)),
           worldSimulation = simulation, worldPlayerCmds = Set.empty }
 
 loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
