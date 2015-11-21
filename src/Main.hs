@@ -6,17 +6,16 @@ module Main ( main ) where
 import Control.Exception (bracket)
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
-import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Foreign (nullPtr)
 import System.Environment (getArgs)
 import System.IO (IOMode (..), hPrint, withFile)
+import Text.Printf (printf)
 
-import Foreign (nullPtr)
 import Graphics.GL.Core45
 import qualified Linear as L
 import qualified SDL
-import Text.Printf (printf)
 
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
@@ -80,7 +79,7 @@ updateGame dt = do
   modify $ \w -> setSimulation w $ simulate sim dt $ updatePlayer demo cmds
 
 updatePlayer :: DemoState -> Set PlayerCmd -> Time -> GameState -> GameState
-updatePlayer Playback _ _ gs = ticPlayer gs
+updatePlayer (Playback _) _ _ gs = ticPlayer gs
 updatePlayer _ cmds time gs = ticPlayer $ addTiccmd gs $ buildTiccmd cmds time
 
 setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
@@ -96,11 +95,10 @@ genIndexBuffer mesh = do
   bufferData GL_ELEMENT_ARRAY_BUFFER ixs GL_STATIC_DRAW
   pure buf
 
-parseArgs :: [String] -> (DemoState, Maybe FilePath)
-parseArgs [] = (NoDemo, Nothing)
-parseArgs ["-record", fp] = (Record fp, Nothing)
-parseArgs ["-playdemo", fp] = (Playback, Just fp)
-parseArgs _ = (NoDemo, Nothing)
+parseArgs :: [String] -> DemoState
+parseArgs ["-record", fp] = Record fp
+parseArgs ["-playdemo", fp] = Playback fp
+parseArgs _ = NoDemo
 
 main :: IO ()
 main =
@@ -118,14 +116,11 @@ main =
       indexBuf <- genIndexBuffer cube
       glEnable GL_DEPTH_TEST
       args <- getArgs
-      let (demo, mbFile) = parseArgs args
-      world <- case demo of
-        r@(Record _) -> createWorld d res (gameState []) r
-        Playback -> do
-          demoCmds <- readDemo $ fromMaybe "demo.hdm" mbFile
-          createWorld d res (gameState demoCmds) Playback
-        _ -> createWorld d res (gameState []) NoDemo
-      void $ execStateT loop world
+      let demo = parseArgs args
+      ticcmds <- case demo of
+        Playback fp -> readDemo fp
+        _ -> return []
+      void . execStateT loop =<< createWorld d res (gameState ticcmds) demo
       delete indexBuf
       delete buf
       delete vao
@@ -180,7 +175,7 @@ data World = World
   , worldDemoState :: DemoState
   }
 
-data DemoState = Record FilePath | Playback | NoDemo deriving (Eq, Show)
+data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
 
 worldModelTransform :: World -> Transform
 worldModelTransform = gPlayerTransform . simState . worldSimulation
@@ -215,7 +210,7 @@ loop = do
     gets (timeDelta . worldTime) >>= updateGame
     demoState <- gets worldDemoState
     case demoState of
-      Playback -> checkDemoEnd
+      Playback _ -> checkDemoEnd
       Record fp -> recordDemo fp
       _ -> return ()
     clearOldTiccmds
