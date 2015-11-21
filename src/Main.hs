@@ -20,14 +20,16 @@ import Text.Printf (printf)
 
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
+import Hasgel.Game (GameState (..), PlayerCmd (..), Ticcmd, addTiccmd,
+                    buildTiccmd, gameState, ticPlayer)
 import Hasgel.GL
 import Hasgel.Input (InputEvent (..), KeyboardKey (..), getEvents)
 import Hasgel.Mesh (Face (..), Mesh (..), cube)
 import qualified Hasgel.Resources as Res
 import qualified Hasgel.SDL as MySDL
-import Hasgel.Simulation (Milliseconds, Simulation (..), Time (..), millis2Sec,
-                          simulate, simulation)
-import Hasgel.Transform (Transform (..), transform2M44, translate)
+import Hasgel.Simulation (Milliseconds, Simulation (..), Time (..), simulate,
+                          simulation)
+import Hasgel.Transform (Transform (..), transform2M44)
 
 ortho :: L.M44 Float
 ortho = L.ortho (-10) 10 (-10) 10 (-10) 10
@@ -77,29 +79,9 @@ updateGame dt = do
   cmds <- gets worldPlayerCmds
   modify $ \w -> setSimulation w $ simulate sim dt $ updatePlayer demo cmds
 
-buildTiccmd :: Set PlayerCmd -> Time -> Ticcmd
-buildTiccmd inputs time = foldl build' emptyTiccmd inputs
-  where playerSpeed = 4 * millis2Sec (timeDelta time)
-        build' cmd MoveLeft = cmd { cmdMove = cmdMove cmd - playerSpeed }
-        build' cmd MoveRight = cmd { cmdMove = cmdMove cmd + playerSpeed }
-        build' cmd Shoot = cmd { cmdShoot = True }
-
-ticPlayer :: GameState -> GameState
-ticPlayer gs
-  | null (gTiccmds gs) = gs
-  | otherwise = let ticcmd:nextTiccmds = gTiccmds gs
-                    trans = movePlayer (gPlayerTransform gs) $ cmdMove ticcmd
-                in gs { gTiccmds = nextTiccmds,
-                        gOldTiccmds = ticcmd : gOldTiccmds gs,
-                        gPlayerTransform = trans }
-
 updatePlayer :: DemoState -> Set PlayerCmd -> Time -> GameState -> GameState
 updatePlayer Playback _ _ gs = ticPlayer gs
-updatePlayer _ cmds time gs = ticPlayer gs'
-  where gs' = gs { gTiccmds = gTiccmds gs ++ [buildTiccmd cmds time] }
-
-movePlayer :: Transform -> Float -> Transform
-movePlayer prev dx = translate prev $ L.V3 dx 0 0
+updatePlayer _ cmds time gs = ticPlayer $ addTiccmd gs $ buildTiccmd cmds time
 
 setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
 setModelTransform prog model = do
@@ -186,22 +168,6 @@ freeResources res = do
   void . Res.freePrograms $ resPrograms res
 
 data Loop = Continue | Quit deriving (Eq, Show)
-
-data GameState = GameState
-  { gTiccmds :: [Ticcmd] -- ^ Commands to be processed.
-  , gOldTiccmds :: [Ticcmd] -- ^ Processed commands, used for recording.
-  , gPlayerTransform :: Transform
-  }
-
-data Ticcmd = Ticcmd { cmdMove :: Float, cmdShoot :: Bool } deriving (Show, Read)
-
-emptyTiccmd :: Ticcmd
-emptyTiccmd = Ticcmd { cmdMove = 0, cmdShoot = False }
-
-gameState :: [Ticcmd] -> GameState
-gameState ticcmds =
-  let model = Transform L.zero (L.V3 0.5 0.5 0.5) (L.V3 0 0 (-5))
-  in GameState { gTiccmds = ticcmds, gOldTiccmds = [], gPlayerTransform = model }
 
 data World = World
   { loopState :: Loop
@@ -345,13 +311,6 @@ handleEvent (KeyReleasedEvent KeyLeft) = modify $ deleteCmd MoveLeft
 handleEvent (KeyReleasedEvent KeyRight) = modify $ deleteCmd MoveRight
 handleEvent (KeyReleasedEvent key) = liftIO $ printf "Released %s\n" (show key)
 handleEvent _ = pure ()
-
--- | Player control commands.
-data PlayerCmd =
-  MoveLeft
-  | MoveRight
-  | Shoot
-  deriving (Show, Ord, Eq)
 
 insertCmd :: PlayerCmd -> World -> World
 insertCmd cmd = modifyCmds (Set.insert cmd)
