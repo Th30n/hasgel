@@ -21,11 +21,19 @@ data Simulation a = Simulation
    { simTime :: !Time -- ^ Total elapsed time since the start.
    , simAccumulatedTime :: !Milliseconds -- ^ Accumulated unsimulated time.
    , simFrame :: !Int -- ^ Total number of simulated frames.
-   , simData :: a -- ^ The data that is being simulated.
+   , simState :: a -- ^ The data that is being simulated.
    }
 
 instance Functor Simulation where
-  fmap f sim = sim { simData = f $ simData sim }
+  fmap f sim = sim { simState = f $ simState sim }
+
+instance Foldable Simulation where
+  foldMap f sim = simState $ f <$> sim
+
+instance Traversable Simulation where
+  sequenceA sim = let f = simState sim
+                      sim' s = const s <$> sim
+                  in sim' <$> f
 
 -- | Convert milliseconds to seconds.
 millis2Sec :: Fractional a => Milliseconds -> a
@@ -42,7 +50,7 @@ maxFrameSkip = 10
 simulation :: a -> Simulation a
 simulation a = Simulation { simTime = Time 0 simulationStep,
                             simAccumulatedTime = 0,
-                            simFrame = 0, simData = a }
+                            simFrame = 0, simState = a }
 
 -- | Run the simulation update for given time step until the simulation time
 -- is exhausted or 'maxFrameSkip' reached. Update simulates 'simulationStep'

@@ -63,19 +63,21 @@ class HasSimulation a b where
   getSimulation :: HasSimulation a b => a -> Simulation b
   setSimulation :: HasSimulation a b => a -> Simulation b -> a
 
-instance HasSimulation World Transform where
+instance HasSimulation World GameState where
   getSimulation = worldSimulation
   setSimulation w sim = w { worldSimulation = sim }
 
 updateGame :: MonadState World m => Milliseconds -> m ()
 updateGame dt = do
   sim <- gets getSimulation
-  cmds <- gets worldPlayerCmds
-  modify $ \w -> setSimulation w $ simulate sim dt (updatePlayer cmds)
+  modify $ \w -> setSimulation w $ simulate sim dt updatePlayer
 
-updatePlayer :: Set PlayerCmd -> Time -> Transform -> Transform
-updatePlayer cmds time prev = foldl cmdPlayer prev cmds
-  where playerSpeed = 4 * millis2Sec (timeDelta time)
+updatePlayer :: Time -> GameState -> GameState
+updatePlayer time prev =
+  prev { gPlayerCmds = if null nextCmds then [cmds] else nextCmds,
+         gPlayerTransform = foldl cmdPlayer (gPlayerTransform prev) cmds }
+  where cmds:nextCmds = gPlayerCmds prev
+        playerSpeed = 4 * millis2Sec (timeDelta time)
         cmdPlayer trans MoveLeft = movePlayer trans (-playerSpeed)
         cmdPlayer trans MoveRight = movePlayer trans playerSpeed
         cmdPlayer trans _ = trans
@@ -158,18 +160,27 @@ freeResources res = do
 
 data Loop = Continue | Quit deriving (Eq, Show)
 
+data GameState = GameState
+  { gPlayerCmds :: [Set PlayerCmd]
+  , gPlayerTransform :: Transform
+  }
+
+gameState :: GameState
+gameState =
+  let model = Transform L.zero (L.V3 0.5 0.5 0.5) (L.V3 0 0 (-5))
+  in GameState { gPlayerCmds = [Set.empty], gPlayerTransform = model }
+
 data World = World
   { loopState :: Loop
   , display :: Display
   , worldTime :: Time
   , resources :: Resources
   , worldFrameTimer :: FT.FrameTimer
-  , worldSimulation :: Simulation Transform
-  , worldPlayerCmds :: Set PlayerCmd
+  , worldSimulation :: Simulation GameState
   }
 
 worldModelTransform :: World -> Transform
-worldModelTransform = simData . worldSimulation
+worldModelTransform = gPlayerTransform . simState . worldSimulation
 
 instance Res.HasPrograms World where
   getPrograms = resPrograms . resources
@@ -184,11 +195,9 @@ type Renderer = IO ()
 
 createWorld :: Milliseconds -> Display -> Resources -> FT.FrameTimer -> World
 createWorld time disp res ft =
-  let model = Transform L.zero (L.V3 0.5 0.5 0.5) (L.V3 0 0 (-5))
-  in World { loopState = Continue, display = disp, worldTime = Time time 0,
-             resources = res, worldFrameTimer = ft,
-             worldSimulation = simulation model,
-             worldPlayerCmds = Set.empty }
+  World { loopState = Continue, display = disp, worldTime = Time time 0,
+          resources = res, worldFrameTimer = ft,
+          worldSimulation = simulation gameState }
 
 loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
 loop = do
@@ -277,12 +286,19 @@ data PlayerCmd =
   deriving (Show, Ord, Eq)
 
 insertCmd :: PlayerCmd -> World -> World
-insertCmd cmd w = let cmds = worldPlayerCmds w
-                  in w { worldPlayerCmds = Set.insert cmd cmds }
+insertCmd cmd w = let sim = worldSimulation w
+                      sim' = modifyCmds (Set.insert cmd) <$> sim
+                  in w { worldSimulation = sim' }
 
 deleteCmd :: PlayerCmd -> World -> World
-deleteCmd cmd w = let cmds = worldPlayerCmds w
-                  in w { worldPlayerCmds = Set.delete cmd cmds }
+deleteCmd cmd w = let sim = worldSimulation w
+                      sim' = modifyCmds (Set.delete cmd) <$> sim
+                  in w { worldSimulation = sim' }
+
+modifyCmds :: (Set PlayerCmd -> Set PlayerCmd) -> GameState -> GameState
+modifyCmds f gs = let cmds:next = gPlayerCmds gs
+                      cmds' = f cmds
+                  in gs { gPlayerCmds = cmds':next }
 
 loadTexture :: FilePath -> IO Texture
 loadTexture file = do
