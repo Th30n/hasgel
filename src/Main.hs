@@ -6,8 +6,11 @@ module Main ( main ) where
 import Control.Exception (bracket)
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
+import System.Environment (getArgs)
+import System.IO (IOMode (..), hPrint, withFile)
 
 import Foreign (nullPtr)
 import Graphics.GL.Core45
@@ -70,17 +73,30 @@ instance HasSimulation World GameState where
 updateGame :: MonadState World m => Milliseconds -> m ()
 updateGame dt = do
   sim <- gets getSimulation
-  modify $ \w -> setSimulation w $ simulate sim dt updatePlayer
+  demo <- gets worldDemoState
+  cmds <- gets worldPlayerCmds
+  modify $ \w -> setSimulation w $ simulate sim dt $ updatePlayer demo cmds
 
-updatePlayer :: Time -> GameState -> GameState
-updatePlayer time prev =
-  prev { gPlayerCmds = if null nextCmds then [cmds] else nextCmds,
-         gPlayerTransform = foldl cmdPlayer (gPlayerTransform prev) cmds }
-  where cmds:nextCmds = gPlayerCmds prev
-        playerSpeed = 4 * millis2Sec (timeDelta time)
-        cmdPlayer trans MoveLeft = movePlayer trans (-playerSpeed)
-        cmdPlayer trans MoveRight = movePlayer trans playerSpeed
-        cmdPlayer trans _ = trans
+buildTiccmd :: Set PlayerCmd -> Time -> Ticcmd
+buildTiccmd inputs time = foldl build' emptyTiccmd inputs
+  where playerSpeed = 4 * millis2Sec (timeDelta time)
+        build' cmd MoveLeft = cmd { cmdMove = cmdMove cmd - playerSpeed }
+        build' cmd MoveRight = cmd { cmdMove = cmdMove cmd + playerSpeed }
+        build' cmd Shoot = cmd { cmdShoot = True }
+
+ticPlayer :: GameState -> GameState
+ticPlayer gs
+  | null (gTiccmds gs) = gs
+  | otherwise = let ticcmd:nextTiccmds = gTiccmds gs
+                    trans = movePlayer (gPlayerTransform gs) $ cmdMove ticcmd
+                in gs { gTiccmds = nextTiccmds,
+                        gOldTiccmds = ticcmd : gOldTiccmds gs,
+                        gPlayerTransform = trans }
+
+updatePlayer :: DemoState -> Set PlayerCmd -> Time -> GameState -> GameState
+updatePlayer Playback _ _ gs = ticPlayer gs
+updatePlayer _ cmds time gs = ticPlayer gs'
+  where gs' = gs { gTiccmds = gTiccmds gs ++ [buildTiccmd cmds time] }
 
 movePlayer :: Transform -> Float -> Transform
 movePlayer prev dx = translate prev $ L.V3 dx 0 0
@@ -98,6 +114,12 @@ genIndexBuffer mesh = do
   bufferData GL_ELEMENT_ARRAY_BUFFER ixs GL_STATIC_DRAW
   pure buf
 
+parseArgs :: [String] -> (DemoState, Maybe FilePath)
+parseArgs [] = (NoDemo, Nothing)
+parseArgs ["-record", fp] = (Record fp, Nothing)
+parseArgs ["-playdemo", fp] = (Playback, Just fp)
+parseArgs _ = (NoDemo, Nothing)
+
 main :: IO ()
 main =
   MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
@@ -113,10 +135,15 @@ main =
       glEnableVertexAttribArray 0
       indexBuf <- genIndexBuffer cube
       glEnable GL_DEPTH_TEST
-      current <- SDL.ticks
-      let [q1, q2, q3, q4] = timeQueries res
-          ft = FT.createFrameTimer ((q1, q2), (q3, q4)) current
-      void . execStateT loop $ createWorld current d res ft
+      args <- getArgs
+      let (demo, mbFile) = parseArgs args
+      world <- case demo of
+        r@(Record _) -> createWorld d res (gameState []) r
+        Playback -> do
+          demoCmds <- readDemo $ fromMaybe "demo.hdm" mbFile
+          createWorld d res (gameState demoCmds) Playback
+        _ -> createWorld d res (gameState []) NoDemo
+      void $ execStateT loop world
       delete indexBuf
       delete buf
       delete vao
@@ -161,14 +188,20 @@ freeResources res = do
 data Loop = Continue | Quit deriving (Eq, Show)
 
 data GameState = GameState
-  { gPlayerCmds :: [Set PlayerCmd]
+  { gTiccmds :: [Ticcmd] -- ^ Commands to be processed.
+  , gOldTiccmds :: [Ticcmd] -- ^ Processed commands, used for recording.
   , gPlayerTransform :: Transform
   }
 
-gameState :: GameState
-gameState =
+data Ticcmd = Ticcmd { cmdMove :: Float, cmdShoot :: Bool } deriving (Show, Read)
+
+emptyTiccmd :: Ticcmd
+emptyTiccmd = Ticcmd { cmdMove = 0, cmdShoot = False }
+
+gameState :: [Ticcmd] -> GameState
+gameState ticcmds =
   let model = Transform L.zero (L.V3 0.5 0.5 0.5) (L.V3 0 0 (-5))
-  in GameState { gPlayerCmds = [Set.empty], gPlayerTransform = model }
+  in GameState { gTiccmds = ticcmds, gOldTiccmds = [], gPlayerTransform = model }
 
 data World = World
   { loopState :: Loop
@@ -177,7 +210,11 @@ data World = World
   , resources :: Resources
   , worldFrameTimer :: FT.FrameTimer
   , worldSimulation :: Simulation GameState
+  , worldPlayerCmds :: Set PlayerCmd
+  , worldDemoState :: DemoState
   }
+
+data DemoState = Record FilePath | Playback | NoDemo deriving (Eq, Show)
 
 worldModelTransform :: World -> Transform
 worldModelTransform = gPlayerTransform . simState . worldSimulation
@@ -193,11 +230,16 @@ instance FT.HasFrameTimer World where
 
 type Renderer = IO ()
 
-createWorld :: Milliseconds -> Display -> Resources -> FT.FrameTimer -> World
-createWorld time disp res ft =
-  World { loopState = Continue, display = disp, worldTime = Time time 0,
-          resources = res, worldFrameTimer = ft,
-          worldSimulation = simulation gameState }
+createWorld :: Display -> Resources -> GameState -> DemoState -> IO World
+createWorld disp res gs demo = do
+  time <- SDL.ticks
+  let [q1, q2, q3, q4] = timeQueries res
+      ft = FT.createFrameTimer ((q1, q2), (q3, q4)) time
+  return World { loopState = Continue, display = disp, worldTime = Time time 0,
+                 resources = res, worldFrameTimer = ft,
+                 worldSimulation = simulation gs,
+                 worldPlayerCmds = Set.empty,
+                 worldDemoState = demo }
 
 loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
 loop = do
@@ -205,14 +247,40 @@ loop = do
   when (ls /= Quit) $ do
     liftIO getEvents >>= mapM_ handleEvent
     gets (timeDelta . worldTime) >>= updateGame
-    w <- get
+    demoState <- gets worldDemoState
+    case demoState of
+      Playback -> checkDemoEnd
+      Record fp -> recordDemo fp
+      _ -> return ()
+    clearOldTiccmds
     renderActions <- sequence [cubeRenderer, axisRenderer]
-    renderDisplay (display w) . FT.withFrameTimer $ do
+    disp <- gets display
+    renderDisplay disp . FT.withFrameTimer $ do
       liftIO $ sequence_ renderActions
       throwError
     displayFrameRate
     updateTime
     loop
+
+checkDemoEnd :: MonadState World m => m ()
+checkDemoEnd = do
+  ticcmds <- gets $ gTiccmds . simState . getSimulation
+  when (null ticcmds) $ modify $ \w -> w { loopState = Quit }
+
+readDemo :: FilePath -> IO [Ticcmd]
+readDemo fp = concatMap read . lines <$> readFile fp
+
+recordDemo :: (MonadIO m, MonadState World m) => FilePath -> m ()
+recordDemo fp = do
+  sim <- gets getSimulation
+  let ticcmds = reverse . gOldTiccmds $ simState sim
+  liftIO . withFile fp AppendMode $ \fh -> hPrint fh ticcmds
+
+clearOldTiccmds :: (MonadState World m) => m ()
+clearOldTiccmds = do
+  sim <- gets getSimulation
+  let sim' = (\gs -> gs { gOldTiccmds = [] }) <$> sim
+  modify $ \w -> setSimulation w sim'
 
 axisRenderer :: (MonadBaseControl IO m, MonadState World m) => m Renderer
 axisRenderer = do
@@ -286,19 +354,13 @@ data PlayerCmd =
   deriving (Show, Ord, Eq)
 
 insertCmd :: PlayerCmd -> World -> World
-insertCmd cmd w = let sim = worldSimulation w
-                      sim' = modifyCmds (Set.insert cmd) <$> sim
-                  in w { worldSimulation = sim' }
+insertCmd cmd = modifyCmds (Set.insert cmd)
 
 deleteCmd :: PlayerCmd -> World -> World
-deleteCmd cmd w = let sim = worldSimulation w
-                      sim' = modifyCmds (Set.delete cmd) <$> sim
-                  in w { worldSimulation = sim' }
+deleteCmd cmd = modifyCmds (Set.delete cmd)
 
-modifyCmds :: (Set PlayerCmd -> Set PlayerCmd) -> GameState -> GameState
-modifyCmds f gs = let cmds:next = gPlayerCmds gs
-                      cmds' = f cmds
-                  in gs { gPlayerCmds = cmds':next }
+modifyCmds :: (Set PlayerCmd -> Set PlayerCmd) -> World -> World
+modifyCmds f w = w { worldPlayerCmds = f (worldPlayerCmds w) }
 
 loadTexture :: FilePath -> IO Texture
 loadTexture file = do
