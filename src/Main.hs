@@ -4,6 +4,7 @@
 module Main ( main ) where
 
 import Control.Exception (bracket)
+import Control.Monad.Base (MonadBase (..))
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Set (Set)
@@ -20,7 +21,7 @@ import qualified SDL
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
 import Hasgel.Game (GameState (..), PlayerCmd (..), Ticcmd, addTiccmd,
-                    buildTiccmd, gameState, ticPlayer)
+                    buildTiccmd, gameState, ticGame)
 import Hasgel.GL
 import Hasgel.Input (InputEvent (..), KeyboardKey (..), getEvents)
 import Hasgel.Mesh (Face (..), Mesh (..), cube)
@@ -56,13 +57,6 @@ uniformProjection prog = do
     Just loc -> useProgram prog >> uniform loc (persp L.!*! camera)
     _ -> pure ()
 
-updateModelTransform :: Transform -> Time -> Transform
-updateModelTransform prev time =
-  let current = fromIntegral (timeCurrent time) * 1E-3
-      angle = 10 * current
-      rot = L.axisAngle (L.V3 1 1 0) $ deg2Rad angle
-  in prev { transformRotation = rot }
-
 class HasSimulation a b where
   getSimulation :: HasSimulation a b => a -> Simulation b
   setSimulation :: HasSimulation a b => a -> Simulation b -> a
@@ -71,16 +65,16 @@ instance HasSimulation World GameState where
   getSimulation = worldSimulation
   setSimulation w sim = w { worldSimulation = sim }
 
-updateGame :: MonadState World m => Milliseconds -> m ()
-updateGame dt = do
+runTics :: MonadState World m => Milliseconds -> m ()
+runTics dt = do
   sim <- gets getSimulation
   demo <- gets worldDemoState
   cmds <- gets worldPlayerCmds
-  modify $ \w -> setSimulation w $ simulate sim dt $ updatePlayer demo cmds
+  modify $ \w -> setSimulation w $ simulate sim dt $ updateGame demo cmds
 
-updatePlayer :: DemoState -> Set PlayerCmd -> Time -> GameState -> GameState
-updatePlayer (Playback _) _ _ gs = ticPlayer gs
-updatePlayer _ cmds time gs = ticPlayer $ addTiccmd gs $ buildTiccmd cmds time
+updateGame :: DemoState -> Set PlayerCmd -> Time -> GameState -> GameState
+updateGame (Playback _) _ time gs = ticGame time gs
+updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds time
 
 setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
 setModelTransform prog model = do
@@ -177,8 +171,8 @@ data World = World
 
 data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
 
-worldModelTransform :: World -> Transform
-worldModelTransform = gPlayerTransform . simState . worldSimulation
+getPlayerTransform :: World -> Transform
+getPlayerTransform = gPlayerTransform . simState . worldSimulation
 
 instance Res.HasPrograms World where
   getPrograms = resPrograms . resources
@@ -188,8 +182,6 @@ instance Res.HasPrograms World where
 instance FT.HasFrameTimer World where
   getFrameTimer = worldFrameTimer
   setFrameTimer w ft = w { worldFrameTimer = ft }
-
-type Renderer = IO ()
 
 createWorld :: Display -> Resources -> GameState -> DemoState -> IO World
 createWorld disp res gs demo = do
@@ -207,17 +199,20 @@ loop = do
   ls <- gets loopState
   when (ls /= Quit) $ do
     liftIO getEvents >>= mapM_ handleEvent
-    gets (timeDelta . worldTime) >>= updateGame
+    gets (timeDelta . worldTime) >>= runTics
     demoState <- gets worldDemoState
     case demoState of
       Playback _ -> checkDemoEnd
       Record fp -> recordDemo fp
       _ -> return ()
     clearOldTiccmds
-    renderActions <- sequence [cubeRenderer, axisRenderer]
     disp <- gets display
     renderDisplay disp . FT.withFrameTimer $ do
-      liftIO $ sequence_ renderActions
+      clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
+      clearDepthBuffer 1
+      renderPlayer
+      renderPlayerShots
+      axisRenderer
       throwError
     displayFrameRate
     updateTime
@@ -243,29 +238,35 @@ clearOldTiccmds = do
   let sim' = (\gs -> gs { gOldTiccmds = [] }) <$> sim
   modify $ \w -> setSimulation w sim'
 
-axisRenderer :: (MonadBaseControl IO m, MonadState World m) => m Renderer
+axisRenderer :: (MonadBaseControl IO m, MonadState World m) => m ()
 axisRenderer = do
-  w <- get
+  playerTransform <- gets getPlayerTransform
   axisProgram <- Res.loadProgram axisProgramDesc
-  pure $ do
+  liftBase $ do
     useProgram axisProgram
     Just mvpLoc <- getUniformLocation axisProgram "mvp"
-    let model = transform2M44 $ worldModelTransform w
+    let model = transform2M44 playerTransform
         mvp = persp L.!*! camera L.!*! model
     uniform mvpLoc mvp
     glDrawArrays GL_POINTS 0 1
 
-cubeRenderer :: (MonadBaseControl IO m, MonadState World m) => m Renderer
-cubeRenderer = do
+renderPlayerShots :: (MonadBaseControl IO m, MonadState World m) => m ()
+renderPlayerShots = do
+  playerShots <- gets $ gPlayerShots . simState . worldSimulation
+  mapM_ cubeRenderer playerShots
+
+renderPlayer :: (MonadBaseControl IO m, MonadState World m) => m ()
+renderPlayer = cubeRenderer =<< gets getPlayerTransform
+
+cubeRenderer :: (MonadBaseControl IO m, MonadState World m) =>
+                Transform -> m ()
+cubeRenderer transform = do
   mainProg <- Res.loadProgram mainProgramDesc
-  w <- get
-  pure $ do
+  liftBase $ do
     useProgram mainProg
     uniformProjection mainProg
     let vertexCount = 3 * length (meshFaces cube)
-        model = transform2M44 $ worldModelTransform w
-    clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
-    clearDepthBuffer 1
+        model = transform2M44 transform
     setModelTransform mainProg model
     drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
 
@@ -300,10 +301,12 @@ updateTime = do
 handleEvent :: (MonadIO m, MonadState World m) => InputEvent -> m ()
 handleEvent QuitEvent = modify $ \w -> w { loopState = Quit }
 handleEvent (KeyPressedEvent KeyLeft) = modify $ insertCmd MoveLeft
-handleEvent (KeyPressedEvent KeyRight) = modify $ insertCmd MoveRight
-handleEvent (KeyPressedEvent key) = liftIO $ printf "Pressed %s\n" (show key)
 handleEvent (KeyReleasedEvent KeyLeft) = modify $ deleteCmd MoveLeft
+handleEvent (KeyPressedEvent KeyRight) = modify $ insertCmd MoveRight
 handleEvent (KeyReleasedEvent KeyRight) = modify $ deleteCmd MoveRight
+handleEvent (KeyPressedEvent KeySpace) = modify $ insertCmd Shoot
+handleEvent (KeyReleasedEvent KeySpace) = modify $ deleteCmd Shoot
+handleEvent (KeyPressedEvent key) = liftIO $ printf "Pressed %s\n" (show key)
 handleEvent (KeyReleasedEvent key) = liftIO $ printf "Released %s\n" (show key)
 handleEvent _ = pure ()
 

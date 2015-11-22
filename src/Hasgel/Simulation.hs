@@ -39,13 +39,17 @@ instance Traversable Simulation where
 millis2Sec :: Fractional a => Milliseconds -> a
 millis2Sec = (0.001 *) . fromIntegral
 
--- | Time step which is simulated.
-simulationStep :: Milliseconds
-simulationStep = 20
+-- | Frames per second that are simulated.
+frameRate :: Int
+frameRate = 50
 
 -- | Maximum number of frames that will be simulated between rendering.
 maxFrameSkip :: Int
 maxFrameSkip = 10
+
+-- | Time step which is simulated.
+simulationStep :: Milliseconds
+simulationStep = floor $ (1000 :: Double) / fromIntegral frameRate
 
 simulation :: a -> Simulation a
 simulation a = Simulation { simTime = Time 0 simulationStep,
