@@ -21,8 +21,8 @@ import qualified SDL
 
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
-import Hasgel.Game (GameState (..), PlayerCmd (..), Ticcmd, addTiccmd,
-                    buildTiccmd, gameState, ticGame)
+import Hasgel.Game (GameState (..), Player (..), PlayerCmd (..), Ticcmd,
+                    addTiccmd, buildTiccmd, gameState, ticGame)
 import Hasgel.GL
 import Hasgel.Input (InputEvent (..), KeyboardKey (..), getEvents)
 import Hasgel.Mesh (Face (..), Mesh (..), cube)
@@ -173,7 +173,7 @@ data World = World
 data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
 
 getPlayerTransform :: World -> Transform
-getPlayerTransform = gPlayerTransform . simState . worldSimulation
+getPlayerTransform = playerTransform . gPlayer . simState . worldSimulation
 
 instance Res.HasPrograms World where
   getPrograms = resPrograms . resources
@@ -241,12 +241,12 @@ clearOldTiccmds = do
 
 axisRenderer :: (MonadBaseControl IO m, MonadState World m) => m ()
 axisRenderer = do
-  playerTransform <- gets getPlayerTransform
+  playerTrans <- gets getPlayerTransform
   axisProgram <- Res.loadProgram axisProgramDesc
   liftBase $ do
     useProgram axisProgram
     Just mvpLoc <- getUniformLocation axisProgram "mvp"
-    let model = transform2M44 playerTransform
+    let model = transform2M44 playerTrans
         mvp = persp L.!*! camera L.!*! model
     uniform mvpLoc mvp
     glDrawArrays GL_POINTS 0 1

@@ -1,9 +1,9 @@
 module Hasgel.Game (
-  GameState(..), Ticcmd, PlayerCmd(..),
+  GameState(..), Ticcmd, PlayerCmd(..), Player (..),
   gameState, ticGame, addTiccmd, buildTiccmd
 ) where
 
-import Hasgel.Simulation (Time (..), millis2Sec)
+import Hasgel.Simulation (Milliseconds, Time (..), millis2Sec)
 import Hasgel.Transform (Transform (..), translate)
 
 import qualified Linear as L
@@ -12,8 +12,15 @@ import qualified Linear as L
 data GameState = GameState
   { gTiccmds :: [Ticcmd] -- ^ Commands to be processed.
   , gOldTiccmds :: [Ticcmd] -- ^ Processed commands, used for recording.
-  , gPlayerTransform :: Transform
+  , gPlayer :: Player
   , gPlayerShots :: [Transform]
+  }
+
+data Player = Player
+  { playerTransform :: Transform
+  , playerShotTime :: Milliseconds
+    -- ^ Time when the next shot can be fired. This allows shooting right at
+    -- the start, when the time is 0.
   }
 
 -- | Commands for one tic of gameplay.
@@ -39,21 +46,23 @@ buildTiccmd inputs time = foldl build' emptyTiccmd inputs
         build' cmd MoveRight = cmd { cmdMove = cmdMove cmd + playerSpeed }
         build' cmd Shoot = cmd { cmdShoot = True }
 
-ticPlayer :: GameState -> GameState
-ticPlayer gs
+ticPlayer :: Time -> GameState -> GameState
+ticPlayer time gs
   | null (gTiccmds gs) = gs
   | otherwise = let ticcmd:nextTiccmds = gTiccmds gs
-                    currTrans = gPlayerTransform gs
+                    currPlayer = gPlayer gs
+                    currTrans = playerTransform currPlayer
                     currShots = gPlayerShots gs
                     trans = playerMove currTrans $ cmdMove ticcmd
-                    shots = playerShoot currTrans currShots $ cmdShoot ticcmd
+                    (player, shots) =
+                      playerShoot time currPlayer currShots $ cmdShoot ticcmd
                 in gs { gTiccmds = nextTiccmds,
                         gOldTiccmds = ticcmd : gOldTiccmds gs,
-                        gPlayerTransform = trans,
+                        gPlayer = player { playerTransform = trans },
                         gPlayerShots = shots }
 
 ticGame :: Time -> GameState -> GameState
-ticGame time = ticShots time . ticPlayer
+ticGame time = ticShots time . ticPlayer time
 
 ticShots :: Time -> GameState -> GameState
 ticShots time gs
@@ -64,14 +73,20 @@ ticShots time gs
 playerMove :: Transform -> Float -> Transform
 playerMove prev dx = translate prev $ L.V3 dx 0 0
 
-playerShoot :: Transform -> [Transform] -> Bool -> [Transform]
-playerShoot _ shots False = shots
-playerShoot trans shots True =
-  let shotPos = L.V3 0 1 0 + transformPosition trans
-      newShot = Transform { transformScale = L.V3 0.25 0.5 0.25,
-                            transformRotation = L.zero,
-                            transformPosition = shotPos }
-  in newShot : shots
+shootCooldown :: Milliseconds
+shootCooldown = 500
+
+playerShoot :: Time -> Player -> [Transform] -> Bool -> (Player, [Transform])
+playerShoot _ player shots False = (player, shots)
+playerShoot time player shots True
+  | timeCurrent time < playerShotTime player = (player, shots)
+  | otherwise = let trans = playerTransform player
+                    shotPos = L.V3 0 1 0 + transformPosition trans
+                    newShot = Transform { transformScale = L.V3 0.25 0.5 0.25,
+                                          transformRotation = L.zero,
+                                          transformPosition = shotPos }
+                in (player { playerShotTime = shootCooldown + timeCurrent time },
+                    newShot:shots)
 
 shotMove :: Float -> Transform -> Transform
 shotMove dy shotPos = translate shotPos $ L.V3 0 dy 0
@@ -82,5 +97,6 @@ emptyTiccmd = Ticcmd { cmdMove = 0, cmdShoot = False }
 gameState :: [Ticcmd] -> GameState
 gameState ticcmds =
   let model = Transform L.zero (L.V3 1 1 1) L.zero
+      player = Player { playerTransform = model, playerShotTime = 0 }
   in GameState { gTiccmds = ticcmds, gOldTiccmds = [],
-                 gPlayerTransform = model, gPlayerShots = [] }
+                 gPlayer = player, gPlayerShots = [] }
