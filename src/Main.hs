@@ -4,6 +4,7 @@
 module Main ( main ) where
 
 import Control.Exception (bracket)
+import Control.Lens ((^.))
 import Control.Monad.Base (MonadBase (..))
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
@@ -46,8 +47,8 @@ persp = L.perspective fovy ar n f
 
 camera :: L.M44 Float
 camera = L.lookAt eye center up
-  where eye = L.V3 0 0 1
-        center = L.V3 0 0 0
+  where eye = L.V3 0 10 21
+        center = L.V3 0 (eye ^. L._y) 0
         up = L.V3 0 1 0
 
 uniformProjection :: MonadIO m => Program -> m ()

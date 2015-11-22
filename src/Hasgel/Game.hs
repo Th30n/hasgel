@@ -34,7 +34,7 @@ addTiccmd gs ticcmd = gs { gTiccmds = gTiccmds gs ++ [ticcmd] }
 
 buildTiccmd :: Foldable f => f PlayerCmd -> Time -> Ticcmd
 buildTiccmd inputs time = foldl build' emptyTiccmd inputs
-  where playerSpeed = 4 * millis2Sec (timeDelta time)
+  where playerSpeed = 10 * millis2Sec (timeDelta time)
         build' cmd MoveLeft = cmd { cmdMove = cmdMove cmd - playerSpeed }
         build' cmd MoveRight = cmd { cmdMove = cmdMove cmd + playerSpeed }
         build' cmd Shoot = cmd { cmdShoot = True }
@@ -58,7 +58,7 @@ ticGame time = ticShots time . ticPlayer
 ticShots :: Time -> GameState -> GameState
 ticShots time gs
   | null (gPlayerShots gs) = gs
-  | otherwise = let shotSpeed = 2 * millis2Sec (timeDelta time)
+  | otherwise = let shotSpeed = 15 * millis2Sec (timeDelta time)
                 in gs { gPlayerShots = shotMove shotSpeed <$> gPlayerShots gs }
 
 playerMove :: Transform -> Float -> Transform
@@ -68,7 +68,7 @@ playerShoot :: Transform -> [Transform] -> Bool -> [Transform]
 playerShoot _ shots False = shots
 playerShoot trans shots True =
   let shotPos = L.V3 0 1 0 + transformPosition trans
-      newShot = Transform { transformScale = L.V3 0.25 0.25 0.25,
+      newShot = Transform { transformScale = L.V3 0.25 0.5 0.25,
                             transformRotation = L.zero,
                             transformPosition = shotPos }
   in newShot : shots
@@ -81,6 +81,6 @@ emptyTiccmd = Ticcmd { cmdMove = 0, cmdShoot = False }
 
 gameState :: [Ticcmd] -> GameState
 gameState ticcmds =
-  let model = Transform L.zero (L.V3 0.5 0.5 0.5) (L.V3 0 0 (-5))
+  let model = Transform L.zero (L.V3 1 1 1) L.zero
   in GameState { gTiccmds = ticcmds, gOldTiccmds = [],
                  gPlayerTransform = model, gPlayerShots = [] }
