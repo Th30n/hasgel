@@ -213,6 +213,7 @@ loop = do
       clearDepthBuffer 1
       renderPlayer
       renderPlayerShots
+      renderInvaders
       axisRenderer
       throwError
     displayFrameRate
@@ -255,6 +256,11 @@ renderPlayerShots :: (MonadBaseControl IO m, MonadState World m) => m ()
 renderPlayerShots = do
   playerShots <- gets $ gPlayerShots . simState . worldSimulation
   mapM_ cubeRenderer playerShots
+
+renderInvaders :: (MonadBaseControl IO m, MonadState World m) => m ()
+renderInvaders = do
+  invaders <- gets $ gInvaders . simState . worldSimulation
+  mapM_ cubeRenderer invaders
 
 renderPlayer :: (MonadBaseControl IO m, MonadState World m) => m ()
 renderPlayer = cubeRenderer =<< gets getPlayerTransform
