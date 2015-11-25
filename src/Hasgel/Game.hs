@@ -3,7 +3,7 @@ module Hasgel.Game (
   gameState, ticGame, addTiccmd, buildTiccmd
 ) where
 
-import Control.Arrow (second)
+import Control.Arrow (first, second)
 
 import Control.Lens ((^.))
 import qualified Linear as L
@@ -19,7 +19,10 @@ data GameState = GameState
   , gPlayer :: Player
   , gPlayerShots :: [Transform]
   , gInvaders :: [Transform]
+  , gInvaderDir :: InvaderDir
   }
+
+data InvaderDir = DirLeft | DirRight | DirDown
 
 data Player = Player
   { playerTransform :: Transform
@@ -67,7 +70,7 @@ ticPlayer time gs
                         gPlayerShots = shots }
 
 ticGame :: Time -> GameState -> GameState
-ticGame time = ticShots time . ticPlayer time
+ticGame time = ticInvaders time . ticShots time . ticPlayer time
 
 ticShots :: Time -> GameState -> GameState
 ticShots time gs
@@ -86,6 +89,31 @@ moveShots dy (shot:shots) ships = case tryMove shot (L.V3 0 dy 0) ships of
                       in (shot':shots', ships')
   (_, Just i) -> moveShots dy shots removeShip
     where removeShip = uncurry (++) $ second tail $ splitAt i ships
+
+ticInvaders :: Time -> GameState -> GameState
+ticInvaders time gs =
+  let shipSpeed = 5 * millis2Sec (timeDelta time)
+      ships = gInvaders gs
+      (dir', ships') = case gInvaderDir gs of
+        DirLeft -> first (\c -> if c then DirRight else DirLeft) $
+                   invaderHorMove (-shipSpeed) ships
+        DirRight -> first (\c -> if c then DirLeft else DirRight) $
+                    invaderHorMove shipSpeed ships
+        DirDown -> (DirLeft, ships) -- TODO
+  in gs { gInvaders = ships', gInvaderDir = dir' }
+
+invaderHorMove :: Float -> [Transform] -> (Bool, [Transform])
+invaderHorMove _ [] = (False, [])
+invaderHorMove dx (ship:ships) =
+  let (c, ship') = invaderMove dx ship
+      (c', ships') = invaderHorMove dx ships
+  in (c || c', ship':ships')
+
+invaderMove :: Float -> Transform -> (Bool, Transform)
+invaderMove dx ship = if outside then (True, ship) else (False, ship')
+  where ship' = translate ship $ L.V3 dx 0 0
+        tx = transformPosition ship' ^. L._x
+        outside = tx < (-gameBoundsX) || tx > gameBoundsX
 
 -- | Maximum and minimum X coordinate of the game area.
 gameBoundsX :: Float
@@ -121,10 +149,13 @@ emptyTiccmd :: Ticcmd
 emptyTiccmd = Ticcmd { cmdMove = 0, cmdShoot = False }
 
 createInvaders :: [Transform]
-createInvaders = [invader (-4), invader 0, invader 4]
+createInvaders = let fstRow x = invader x 15
+                     sndRow x = invader x 18
+                     xs = [-4, 0, 4]
+                 in map fstRow xs ++ map sndRow xs
 
-invader :: Float -> Transform
-invader x = Transform L.zero (L.V3 1 1 1) (L.V3 x 15 0)
+invader :: Float -> Float -> Transform
+invader x y = Transform L.zero (L.V3 1 1 1) (L.V3 x y 0)
 
 gameState :: [Ticcmd] -> GameState
 gameState ticcmds =
@@ -132,4 +163,4 @@ gameState ticcmds =
       player = Player { playerTransform = model, playerShotTime = 0 }
   in GameState { gTiccmds = ticcmds, gOldTiccmds = [],
                  gPlayer = player, gPlayerShots = [],
-                 gInvaders = createInvaders }
+                 gInvaders = createInvaders, gInvaderDir = DirRight }
