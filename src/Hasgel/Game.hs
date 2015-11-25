@@ -4,13 +4,13 @@ module Hasgel.Game (
 ) where
 
 import Control.Arrow (second)
-import Control.Lens ((^.))
-import Data.List (findIndex)
 
+import Control.Lens ((^.))
+import qualified Linear as L
+
+import Hasgel.Game.Movement (tryMove)
 import Hasgel.Simulation (Milliseconds, Time (..), millis2Sec)
 import Hasgel.Transform (Transform (..), translate)
-
-import qualified Linear as L
 
 -- | State of the game.
 data GameState = GameState
@@ -81,44 +81,11 @@ ticShots time gs
 moveShots :: Float -> [Transform] -> [Transform] -> ([Transform], [Transform])
 moveShots _ [] ships = ([], ships)
 moveShots dy shots [] = (shotMove dy <$> shots, [])
-moveShots dy (shot:shots) ships
-  | Just ships' <- shotCollides shot dy ships = moveShots dy shots ships'
-  | otherwise = let (shots', ships') = moveShots dy shots ships
-                in (shotMove dy shot:shots', ships')
-
--- | On collision, remove a transform from list.
-shotCollides :: Transform -> Float -> [Transform] -> Maybe [Transform]
-shotCollides shot dy ships = do
-  i <- snd $ tryMove shot (L.V3 0 dy 0) ships
-  Just $ uncurry (++) $ second tail $ splitAt i ships
-
--- | Returns the new position and the index of the colliding object when moving
--- for the given velocity.
--- TODO: Check if speed is greater than some maximum and step accordingly.
-tryMove :: Transform -> L.V3 Float -> [Transform] -> (Transform, Maybe Int)
-tryMove mobj speed blockers
-  | Just i <- checkPosition (translate mobj speed) blockers = (mobj, Just i)
-  | otherwise = (translate mobj speed, Nothing)
-
--- | Returns the index of the colliding object.
-checkPosition :: Transform -> [Transform] -> Maybe Int
-checkPosition mobj = findIndex (bvOverlaps mobj)
-
--- | Returns True if the axis aligned bounding volumes of given transforms
--- overlap.
-bvOverlaps :: Transform -> Transform -> Bool
-bvOverlaps a b
-  | aMinY > bMaxY || aMaxY < bMinY = False
-  | aMinX > bMaxX || aMaxX < bMinX = False
-  | aMinZ > bMaxZ || aMaxZ < bMinZ = False
-  | otherwise = True
-  where bounds t c = let scale = transformScale t ^. c
-                         pos = transformPosition t ^. c
-                     in (pos - scale, pos + scale)
-        [(aMinX, aMaxX), (aMinY, aMaxY), (aMinZ, aMaxZ)] =
-          bounds a <$> [L._x, L._y, L._z]
-        [(bMinX, bMaxX), (bMinY, bMaxY), (bMinZ, bMaxZ)] =
-          bounds b <$> [L._x, L._y, L._z]
+moveShots dy (shot:shots) ships = case tryMove shot (L.V3 0 dy 0) ships of
+  (shot', Nothing) -> let (shots', ships') = moveShots dy shots ships
+                      in (shot':shots', ships')
+  (_, Just i) -> moveShots dy shots removeShip
+    where removeShip = uncurry (++) $ second tail $ splitAt i ships
 
 -- | Maximum and minimum X coordinate of the game area.
 gameBoundsX :: Float
