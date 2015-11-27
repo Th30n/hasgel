@@ -43,7 +43,7 @@ tryMove mobj speed blockers =
           | otherwise = (c, Nothing)
         tryMove' dv
           | Just i <- checkPosition (translate mobj dv) blockers = (mobj, Just i)
-          | otherwise = (translate mobj speed, Nothing)
+          | otherwise = (translate mobj dv, Nothing)
 
 -- | Returns the index of the colliding object.
 checkPosition :: Transform -> [Transform] -> Maybe Int
