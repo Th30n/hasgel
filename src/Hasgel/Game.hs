@@ -95,7 +95,7 @@ moveShots dy (shot:shots) ships =
 
 ticInvaders :: Time -> GameState -> GameState
 ticInvaders time gs =
-  let shipSpeed = 5 * millis2Sec (timeDelta time)
+  let shipSpeed = 2.5 * millis2Sec (timeDelta time)
       ships = gInvaders gs
       (changeDir, ships') = case gInvaderDir gs of
                               DirLeft -> invaderHorMove (-shipSpeed) ships
