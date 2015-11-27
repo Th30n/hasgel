@@ -19,17 +19,19 @@ maxSpeed = 0.25
 -- for the given velocity.
 tryMove :: Transform -> L.V3 Float -> [Transform] -> (Transform, Maybe Int)
 tryMove mobj speed [] = (translate mobj speed, Nothing)
-tryMove mobj speed blockers = case clampSpeed of
-  -- Speed is below maximum, move to destination.
-  (speed', Nothing) -> tryMove' speed'
-  -- Speed is above maximum, move incrementally.
-  (speed', Just remSpeed) -> case tryMove' speed' of
-    -- No collision, continue moving.
-    (mobj', Nothing) -> tryMove mobj' remSpeed blockers
-    -- Collision, return the result.
-    colRes -> colRes
+tryMove mobj speed blockers =
+  case clampSpeed of
+    -- Speed is below maximum, move to destination.
+    (speed', Nothing) -> tryMove' speed'
+    -- Speed is above maximum, move incrementally.
+    (speed', Just remSpeed) ->
+      case tryMove' speed' of
+        -- No collision, continue moving.
+        (mobj', Nothing) -> tryMove mobj' remSpeed blockers
+        -- Collision, return the result.
+        colRes -> colRes
   where clampSpeed = let L.V3 (x, mx) (y, my) (z, mz) = clampComp <$> speed
-                         -- Reminder speed if any.
+                         -- Remainder speed if any.
                          rv = if all isNothing [mx, my, mz]
                               then Nothing
                               else let [rx, ry, rz] = fromMaybe 0 <$> [mx, my, mz]

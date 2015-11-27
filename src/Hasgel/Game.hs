@@ -86,30 +86,32 @@ ticShots time gs
 moveShots :: Float -> [Transform] -> [Transform] -> ([Transform], [Transform])
 moveShots _ [] ships = ([], ships)
 moveShots dy shots [] = (shotMove dy <$> shots, [])
-moveShots dy (shot:shots) ships = case tryMove shot (L.V3 0 dy 0) ships of
-  (shot', Nothing) -> let (shots', ships') = moveShots dy shots ships
-                      in (shot':shots', ships')
-  (_, Just i) -> moveShots dy shots removeShip
-    where removeShip = uncurry (++) $ second tail $ splitAt i ships
+moveShots dy (shot:shots) ships =
+  case tryMove shot (L.V3 0 dy 0) ships of
+    (shot', Nothing) -> let (shots', ships') = moveShots dy shots ships
+                        in (shot':shots', ships')
+    (_, Just i) -> let ships' = uncurry (++) $ second tail $ splitAt i ships
+                   in moveShots dy shots ships'
 
 ticInvaders :: Time -> GameState -> GameState
 ticInvaders time gs =
   let shipSpeed = 5 * millis2Sec (timeDelta time)
       ships = gInvaders gs
       (changeDir, ships') = case gInvaderDir gs of
-        DirLeft -> invaderHorMove (-shipSpeed) ships
-        DirRight -> invaderHorMove shipSpeed ships
-        DirDown -> invaderMoveDown time (gStartMoveDown gs) ships
+                              DirLeft -> invaderHorMove (-shipSpeed) ships
+                              DirRight -> invaderHorMove shipSpeed ships
+                              DirDown ->
+                                invaderMoveDown time (gStartMoveDown gs) ships
   in if not changeDir
      then gs { gInvaders = ships' }
      else case gInvaderDir gs of
-       DirDown -> let newDir = if gOldInvaderDir gs == DirLeft
-                               then DirRight
-                               else DirLeft
-                  in gs { gInvaderDir = newDir }
-       dir -> gs { gInvaderDir = DirDown,
-                   gOldInvaderDir = dir,
-                   gStartMoveDown = timeCurrent time }
+            DirDown -> let newDir = if gOldInvaderDir gs == DirLeft
+                                    then DirRight
+                                    else DirLeft
+                       in gs { gInvaderDir = newDir }
+            dir -> gs { gInvaderDir = DirDown,
+                        gOldInvaderDir = dir,
+                        gStartMoveDown = timeCurrent time }
 
 type ChangeDir = Bool
 

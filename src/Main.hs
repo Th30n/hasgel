@@ -113,8 +113,8 @@ main =
       args <- getArgs
       let demo = parseArgs args
       ticcmds <- case demo of
-        Playback fp -> readDemo fp
-        _ -> return []
+                   Playback fp -> readDemo fp
+                   _ -> return []
       void . execStateT loop =<< createWorld d res (gameState ticcmds) demo
       delete indexBuf
       delete buf
