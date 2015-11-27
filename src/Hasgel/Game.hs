@@ -3,7 +3,7 @@ module Hasgel.Game (
   gameState, ticGame, addTiccmd, buildTiccmd
 ) where
 
-import Control.Arrow (first, second)
+import Control.Arrow (second)
 
 import Control.Lens ((^.))
 import qualified Linear as L
@@ -20,15 +20,17 @@ data GameState = GameState
   , gPlayerShots :: [Transform]
   , gInvaders :: [Transform]
   , gInvaderDir :: InvaderDir
+  , gOldInvaderDir :: InvaderDir
+  , gStartMoveDown :: Milliseconds
   }
 
-data InvaderDir = DirLeft | DirRight | DirDown
+data InvaderDir = DirLeft | DirRight | DirDown deriving (Eq, Show)
 
 data Player = Player
   { playerTransform :: Transform
-  , playerShotTime :: Milliseconds
-    -- ^ Time when the next shot can be fired. This allows shooting right at
+    -- | Time when the next shot can be fired. This allows shooting right at
     -- the start, when the time is 0.
+  , playerShotTime :: Milliseconds
   }
 
 -- | Commands for one tic of gameplay.
@@ -94,38 +96,66 @@ ticInvaders :: Time -> GameState -> GameState
 ticInvaders time gs =
   let shipSpeed = 5 * millis2Sec (timeDelta time)
       ships = gInvaders gs
-      (dir', ships') = case gInvaderDir gs of
-        DirLeft -> first (\c -> if c then DirRight else DirLeft) $
-                   invaderHorMove (-shipSpeed) ships
-        DirRight -> first (\c -> if c then DirLeft else DirRight) $
-                    invaderHorMove shipSpeed ships
-        DirDown -> (DirLeft, ships) -- TODO
-  in gs { gInvaders = ships', gInvaderDir = dir' }
+      (changeDir, ships') = case gInvaderDir gs of
+        DirLeft -> invaderHorMove (-shipSpeed) ships
+        DirRight -> invaderHorMove shipSpeed ships
+        DirDown -> invaderMoveDown time (gStartMoveDown gs) ships
+  in if not changeDir
+     then gs { gInvaders = ships' }
+     else case gInvaderDir gs of
+       DirDown -> let newDir = if gOldInvaderDir gs == DirLeft
+                               then DirRight
+                               else DirLeft
+                  in gs { gInvaderDir = newDir }
+       dir -> gs { gInvaderDir = DirDown,
+                   gOldInvaderDir = dir,
+                   gStartMoveDown = timeCurrent time }
 
-invaderHorMove :: Float -> [Transform] -> (Bool, [Transform])
+type ChangeDir = Bool
+
+-- | Move down for this amount of milliseconds.
+moveDownTime :: Milliseconds
+moveDownTime = 200
+
+-- | Move invaders vertically down. Sets the 'ChangeDir' to 'True' when the
+-- invaders have been moving down for 'moveDownTime'.
+invaderMoveDown :: Time -> Milliseconds -> [Transform] -> (ChangeDir, [Transform])
+invaderMoveDown time startTime ships
+  | timeCurrent time - startTime >= moveDownTime = (True, ships)
+  | otherwise = let dy = -5 * millis2Sec (timeDelta time)
+                in (False, fmap (`translate` L.V3 0 dy 0) ships)
+
+-- | Moves all given invaders for the given horizontal offset and reports if the
+-- direction of movement needs to change.
+invaderHorMove :: Float -> [Transform] -> (ChangeDir, [Transform])
 invaderHorMove _ [] = (False, [])
 invaderHorMove dx (ship:ships) =
   let (c, ship') = invaderMove dx ship
       (c', ships') = invaderHorMove dx ships
   in (c || c', ship':ships')
 
-invaderMove :: Float -> Transform -> (Bool, Transform)
+-- | Moves the invader ship for the given horizontal offset. Returns a pair with
+-- information whether to change the movement direction or not. The change
+-- needs to happen when the invader hits the game field boundary.
+invaderMove :: Float -> Transform -> (ChangeDir, Transform)
 invaderMove dx ship = if outside then (True, ship) else (False, ship')
   where ship' = translate ship $ L.V3 dx 0 0
-        tx = transformPosition ship' ^. L._x
-        outside = tx < (-gameBoundsX) || tx > gameBoundsX
+        outside = not $ inGameBounds ship'
 
 -- | Maximum and minimum X coordinate of the game area.
 gameBoundsX :: Float
 gameBoundsX = 10
 
+inGameBounds :: Transform -> Bool
+inGameBounds transform =
+  let tx = transformPosition transform ^. L._x
+  in tx >= (-gameBoundsX) && tx <= gameBoundsX
+
 playerMove :: Transform -> Float -> Transform
 playerMove prev dx
-  | dx > 0 = translate prev $ L.V3 (min dx rx) 0 0
-  | dx < 0 = translate prev $ L.V3 (max dx lx) 0 0
+  | inGameBounds new = new
   | otherwise = prev
-  where rx = gameBoundsX - transformPosition prev ^. L._x
-        lx = (-gameBoundsX) - transformPosition prev ^. L._x
+  where new = translate prev $ L.V3 dx 0 0
 
 shootCooldown :: Milliseconds
 shootCooldown = 500
@@ -163,4 +193,6 @@ gameState ticcmds =
       player = Player { playerTransform = model, playerShotTime = 0 }
   in GameState { gTiccmds = ticcmds, gOldTiccmds = [],
                  gPlayer = player, gPlayerShots = [],
-                 gInvaders = createInvaders, gInvaderDir = DirRight }
+                 gInvaders = createInvaders,
+                 gInvaderDir = DirRight, gOldInvaderDir = DirLeft,
+                 gStartMoveDown = 0 }
