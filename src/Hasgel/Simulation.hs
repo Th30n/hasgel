@@ -33,7 +33,7 @@ instance Foldable Simulation where
 
 instance Traversable Simulation where
   sequenceA sim = let f = simState sim
-                      sim' s = const s <$> sim
+                      sim' s = s <$ sim
                   in sim' <$> f
 
 -- | Convert milliseconds to seconds.
