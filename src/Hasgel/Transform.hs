@@ -18,7 +18,7 @@ data Transform = Transform
     transformRotation :: L.Quaternion Float
   , transformScale :: L.V3 Float
   , transformPosition :: L.V3 Float
-  } deriving (Show)
+  } deriving (Show, Eq)
 
 transformRotationM44 :: Transform -> L.M44 Float
 transformRotationM44 = L.m33_to_m44 . L.fromQuaternion . transformRotation

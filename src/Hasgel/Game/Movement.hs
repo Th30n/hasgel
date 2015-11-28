@@ -1,5 +1,5 @@
 module Hasgel.Game.Movement (
-  tryMove
+  maxSpeed, tryMove
 ) where
 
 
