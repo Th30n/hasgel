@@ -2,6 +2,7 @@
 
 module Hasgel.Simulation (
   Time(..), Milliseconds, Update, Simulation(..),
+  maxFrameSkip, frameRate, simulationStep,
   millis2Sec, simulation, simulate
   ) where
 
