@@ -19,15 +19,20 @@ data OBJ = OBJ
   { objVertices :: [Vertex]
   , objNormals :: [Vertex]
   , objUvs :: [UV]
-  , objFaces :: [(Int, Maybe Int, Maybe Int)]
+  , objFaces :: [[(Int, Maybe Int, Maybe Int)]]
   } deriving (Show)
 
-data VertexData =
-  GeometryVertex Vertex
-  | NormalVertex Vertex
-  | TextureVertex UV
+data OBJToken = VertexToken !VertexData | ElementToken !ElementData
 
-data ElementData = FaceElement [(Int, Maybe Int, Maybe Int)] deriving (Show)
+data VertexData =
+  GeometryVertex !Vertex
+  | NormalVertex !Vertex
+  | TextureVertex !UV
+
+data ElementData = FaceElement ![(Int, Maybe Int, Maybe Int)] deriving (Show)
+
+emptyOBJ :: OBJ
+emptyOBJ = OBJ [] [] [] []
 
 parseFile :: FilePath -> IO (Either String OBJ)
 parseFile fp = parseString <$> readFile fp
@@ -37,16 +42,24 @@ parseString = A.parseOnly (parseOBJ <* A.endOfInput) . fromString
 
 parseOBJ :: A.Parser OBJ
 parseOBJ = do
-  objs <- A.many1' parseLine
+  tokens <- A.many1' parseLine
   A.skipSpace
   A.endOfInput
-  pure $ foldr1 joinObj objs
-  where joinObj a b = OBJ { objVertices = objVertices a ++ objVertices b,
-                            objNormals = objNormals a ++ objNormals b,
-                            objUvs = objUvs a ++ objUvs b,
-                            objFaces = objFaces a ++ objFaces b }
+  let obj = foldr joinObj emptyOBJ tokens
+      joinObj (VertexToken (GeometryVertex v)) o =
+        o { objVertices = v : objVertices o }
+      joinObj (VertexToken (NormalVertex v)) o =
+        o { objNormals = v : objNormals o }
+      joinObj (VertexToken (TextureVertex v)) o =
+        o { objUvs = v : objUvs o }
+      joinObj (ElementToken (FaceElement f)) o =
+        o { objFaces = f : objFaces o }
+  pure obj { objVertices = reverse $ objVertices obj,
+             objNormals = reverse $ objNormals obj,
+             objUvs = reverse $ objUvs obj,
+             objFaces = reverse $ objFaces obj }
 
-parseLine :: A.Parser OBJ
+parseLine :: A.Parser OBJToken
 parseLine = do
   A.skipSpace
   A.skipMany (parseComment <* A.skipSpace)
@@ -55,23 +68,10 @@ parseLine = do
 parseComment :: A.Parser ()
 parseComment = "#" *> A.skipWhile (A.notInClass "\n\r")
 
-parseVertexData :: A.Parser OBJ
+parseVertexData :: A.Parser OBJToken
 parseVertexData = do
   vd <- parseGeometryVertex <|> parseNormalVertex <|> parseTextureVertex
-  let obj = case vd of
-              GeometryVertex vertex -> OBJ { objVertices = [vertex],
-                                             objNormals = [],
-                                             objUvs = [],
-                                             objFaces = [] }
-              NormalVertex vertex -> OBJ { objVertices = [],
-                                           objNormals = [vertex],
-                                           objUvs = [],
-                                           objFaces = [] }
-              TextureVertex vertex -> OBJ { objVertices = [],
-                                            objNormals = [],
-                                            objUvs = [vertex],
-                                            objFaces = [] }
-  pure obj
+  pure $ VertexToken vd
 
 parseGeometryVertex :: A.Parser VertexData
 parseGeometryVertex = GeometryVertex <$> ("v " *> parseVertex)
@@ -96,11 +96,8 @@ parseVertex2D = do
   y <- realToFrac <$> A.double
   pure $ L.V2 x y
 
-parseElementData :: A.Parser OBJ
-parseElementData = do
-  (FaceElement ed) <- parseFace
-  pure OBJ { objVertices = [], objNormals = [], objUvs = [],
-             objFaces = ed }
+parseElementData :: A.Parser OBJToken
+parseElementData = ElementToken <$> parseFace
 
 parseFace :: A.Parser ElementData
 parseFace = FaceElement <$> ("f " *> A.count 3 (parseFaceVertex <* A.skipSpace))
