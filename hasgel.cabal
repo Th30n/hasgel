@@ -36,13 +36,13 @@ executable hasgel
     , transformers >= 0.3
     , transformers-base >= 0.4
   default-language: Haskell2010
-  ghc-options: -Wall -fwarn-tabs
-  ghc-prof-options: -fprof-auto -rtsopts
+  ghc-options: -Wall -fwarn-tabs -rtsopts -O2
+  ghc-prof-options: -fprof-auto
 
 library
   default-language: Haskell2010
   hs-source-dirs: src
-  ghc-options: -Wall -fwarn-tabs
+  ghc-options: -Wall -fwarn-tabs -O2
   exposed-modules:
     Hasgel.Transform
     Hasgel.Simulation
@@ -94,7 +94,7 @@ benchmark bench-obj
   main-is: Hasgel/Mesh/Test/BenchOBJ.hs
   hs-source-dirs: src
   default-language: Haskell2010
-  ghc-options: -Wall -fwarn-tabs -O -rtsopts
+  ghc-options: -Wall -fwarn-tabs -O2 -rtsopts
   build-depends:
       base >= 4.8
     , hasgel
