@@ -71,7 +71,7 @@ parseComment = "#" *> A.skipWhile (A.notInClass "\n\r")
 parseVertexData :: A.Parser OBJToken
 parseVertexData = do
   vd <- parseGeometryVertex <|> parseNormalVertex <|> parseTextureVertex
-  pure $ VertexToken vd
+  pure $! VertexToken vd
 
 parseGeometryVertex :: A.Parser VertexData
 parseGeometryVertex = GeometryVertex <$> ("v " *> parseVertex)
@@ -87,14 +87,14 @@ parseVertex = do
   L.V2 x y <- parseVertex2D
   A.skipSpace
   z <- realToFrac <$> A.double
-  pure $ L.V3 x y z
+  pure $! L.V3 x y z
 
 parseVertex2D :: A.Parser UV
 parseVertex2D = do
   x <- realToFrac <$> A.double
   A.skipSpace
   y <- realToFrac <$> A.double
-  pure $ L.V2 x y
+  pure $! L.V2 x y
 
 parseElementData :: A.Parser OBJToken
 parseElementData = ElementToken <$> parseFace
@@ -109,5 +109,5 @@ parseFaceVertex = do
   vn <- case vt of
           Nothing -> parseOptionalVertex $ "//" *> A.decimal
           _ -> parseOptionalVertex $ "/" *> A.decimal
-  pure (v, vt, vn)
+  pure $! (v, vt, vn)
   where parseOptionalVertex p = A.option Nothing $ Just <$> p
