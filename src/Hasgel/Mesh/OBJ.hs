@@ -54,10 +54,7 @@ parseOBJ = do
         o { objUvs = v : objUvs o }
       joinObj (ElementToken (FaceElement f)) o =
         o { objFaces = f : objFaces o }
-  pure obj { objVertices = reverse $ objVertices obj,
-             objNormals = reverse $ objNormals obj,
-             objUvs = reverse $ objUvs obj,
-             objFaces = reverse $ objFaces obj }
+  pure $! obj
 
 parseLine :: A.Parser OBJToken
 parseLine = do
