@@ -106,5 +106,5 @@ parseFaceVertex = do
   vn <- case vt of
           Nothing -> parseOptionalVertex $ "//" *> A.decimal
           _ -> parseOptionalVertex $ "/" *> A.decimal
-  pure $! (v, vt, vn)
+  pure (v, vt, vn)
   where parseOptionalVertex p = A.option Nothing $ Just <$> p
