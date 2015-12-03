@@ -116,3 +116,4 @@ benchmark bench-obj
     , deepseq
     , linear >= 1.20
     , attoparsec >= 0.13
+    , binary >= 0.7
