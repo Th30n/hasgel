@@ -6,6 +6,7 @@ module Hasgel.Mesh.OBJ (
 
 import Control.Applicative ((<|>))
 import Data.String (IsString (..))
+import Data.Word (Word16)
 
 -- Don't handle non ASCII at all.
 import Data.Attoparsec.ByteString.Char8 ((<?>))
@@ -14,12 +15,14 @@ import qualified Linear as L
 
 type Vertex = L.V3 Float
 type UV = L.V2 Float
+type FaceComponent = (Word16, Maybe Word16, Maybe Word16)
+type Face = [FaceComponent]
 
 data OBJ = OBJ
   { objVertices :: [Vertex]
   , objNormals :: [Vertex]
   , objUvs :: [UV]
-  , objFaces :: [[(Int, Maybe Int, Maybe Int)]]
+  , objFaces :: [Face]
   } deriving (Show)
 
 data OBJToken = VertexToken !VertexData | ElementToken !ElementData
@@ -29,7 +32,7 @@ data VertexData =
   | NormalVertex !Vertex
   | TextureVertex !UV
 
-data ElementData = FaceElement ![(Int, Maybe Int, Maybe Int)] deriving (Show)
+data ElementData = FaceElement !Face deriving (Show)
 
 emptyOBJ :: OBJ
 emptyOBJ = OBJ [] [] [] []
@@ -99,7 +102,7 @@ parseElementData = ElementToken <$> parseFace
 parseFace :: A.Parser ElementData
 parseFace = FaceElement <$> ("f " *> A.count 3 (parseFaceVertex <* A.skipSpace))
 
-parseFaceVertex :: A.Parser (Int, Maybe Int, Maybe Int)
+parseFaceVertex :: A.Parser FaceComponent
 parseFaceVertex = do
   v <- A.decimal
   vt <- parseOptionalVertex $ "/" *> A.decimal

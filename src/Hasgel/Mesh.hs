@@ -17,7 +17,7 @@ data Mesh = Mesh
   , meshNormals :: Maybe [L.V3 Float]
   , meshUvs :: Maybe [L.V2 Float]
   , meshFaces :: [Face]
-  }
+  } deriving (Show)
 
 instance Binary Mesh where
   put mesh = do
@@ -38,7 +38,7 @@ data Face = Face
   { faceVertexIx :: [Word16]
   , faceUvIx :: Maybe [Word16]
   , faceNormalIx :: Maybe [Word16]
-  }
+  } deriving (Show)
 
 instance Binary Face where
   put face = do
@@ -64,9 +64,8 @@ obj2Mesh :: OBJ -> Mesh
 obj2Mesh (OBJ verts normals uvs faces) =
   Mesh verts (Just normals) (Just uvs) $ convertFace <$> faces
   where convertFace [(av, avt, avn), (bv, bvt, bvn), (cv, cvt, cvn)] =
-          Face (map fromIntegral [av, bv, cv])
-          ((map fromIntegral) <$> sequence [avt, bvt, cvt]) $
-          (map fromIntegral) <$> sequence [avn, bvn, cvn]
+          Face [av, bv, cv] (sequence [avt, bvt, cvt]) $ sequence [avn, bvn, cvn]
+        convertFace _ = error "This should not happen."
 
 cube :: Mesh
 cube = Mesh {
