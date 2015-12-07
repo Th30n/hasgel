@@ -16,7 +16,7 @@ import qualified Linear as L
 type Vertex = L.V3 Float
 type UV = L.V2 Float
 type FaceComponent = (Word16, Maybe Word16, Maybe Word16)
-type Face = [FaceComponent]
+type Face = (FaceComponent, FaceComponent, FaceComponent)
 
 data OBJ = OBJ
   { objVertices :: [Vertex]
@@ -100,7 +100,9 @@ parseElementData :: A.Parser OBJToken
 parseElementData = ElementToken <$> parseFace
 
 parseFace :: A.Parser ElementData
-parseFace = FaceElement <$> ("f " *> A.count 3 (parseFaceVertex <* A.skipSpace))
+parseFace = do
+  [a, b, c] <- "f " *> A.count 3 (parseFaceVertex <* A.skipSpace)
+  pure $! FaceElement (a, b, c)
 
 parseFaceVertex :: A.Parser FaceComponent
 parseFaceVertex = do

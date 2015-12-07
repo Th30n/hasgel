@@ -63,9 +63,8 @@ loadHmd fp = do
 obj2Mesh :: OBJ -> Mesh
 obj2Mesh (OBJ verts normals uvs faces) =
   Mesh verts (Just normals) (Just uvs) $ convertFace <$> faces
-  where convertFace [(av, avt, avn), (bv, bvt, bvn), (cv, cvt, cvn)] =
+  where convertFace ((av, avt, avn), (bv, bvt, bvn), (cv, cvt, cvn)) =
           Face [av, bv, cv] (sequence [avt, bvt, cvt]) $ sequence [avn, bvn, cvn]
-        convertFace _ = error "This should not happen."
 
 cube :: Mesh
 cube = Mesh {
