@@ -25,7 +25,7 @@ import Hasgel.Game (GameState (..), Player (..), PlayerCmd (..), Ticcmd,
                     addTiccmd, buildTiccmd, gameState, ticGame)
 import Hasgel.GL
 import Hasgel.Input (InputEvent (..), KeyboardKey (..), getEvents)
-import Hasgel.Mesh (Face (..), Mesh (..), cube, loadHmd, meshVertexCount)
+import Hasgel.Mesh (Mesh (..), cube, loadHmd, meshVertexCount, meshVertexIx)
 import qualified Hasgel.Resources as Res
 import qualified Hasgel.SDL as MySDL
 import Hasgel.Simulation (Milliseconds, Simulation (..), Time (..), simulate,
@@ -84,7 +84,7 @@ setModelTransform prog model = do
 
 genIndexBuffer :: Mesh -> IO Buffer
 genIndexBuffer mesh = do
-  let ixs = concatMap (map (\x -> x - 1) . faceVertexIx) $ meshFaces mesh
+  let ixs = meshVertexIx mesh
   buf <- gen
   glBindBuffer GL_ELEMENT_ARRAY_BUFFER $ object buf
   bufferData GL_ELEMENT_ARRAY_BUFFER ixs GL_STATIC_DRAW
