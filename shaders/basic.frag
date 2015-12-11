@@ -5,6 +5,7 @@ layout (binding = 0) uniform sampler2D tex_object;
 in VS_OUT
 {
     vec3 position;
+    vec3 normal;
     vec2 tc;
 } fs_in;
 
