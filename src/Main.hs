@@ -25,7 +25,7 @@ import Hasgel.Game (GameState (..), Player (..), PlayerCmd (..), Ticcmd,
                     addTiccmd, buildTiccmd, gameState, ticGame)
 import Hasgel.GL
 import Hasgel.Input (InputEvent (..), KeyboardKey (..), getEvents)
-import Hasgel.Mesh (Face (..), Mesh (..), cube)
+import Hasgel.Mesh (Face (..), Mesh (..), cube, loadHmd)
 import qualified Hasgel.Resources as Res
 import qualified Hasgel.SDL as MySDL
 import Hasgel.Simulation (Milliseconds, Simulation (..), Time (..), simulate,
@@ -105,10 +105,10 @@ main =
       glBindVertexArray $ object vao
       buf <- gen :: IO Buffer
       glBindBuffer GL_ARRAY_BUFFER $ object buf
-      bufferData GL_ARRAY_BUFFER (meshVertices cube) GL_STATIC_DRAW
+      bufferData GL_ARRAY_BUFFER (meshVertices (resMesh res)) GL_STATIC_DRAW
       glVertexAttribPointer 0 3 GL_FLOAT GL_FALSE 0 nullPtr
       glEnableVertexAttribArray 0
-      indexBuf <- genIndexBuffer cube
+      indexBuf <- genIndexBuffer $ resMesh res
       glEnable GL_DEPTH_TEST
       args <- getArgs
       let demo = parseArgs args
@@ -136,6 +136,7 @@ data Resources = Resources
   { texture :: Texture
   , timeQueries :: [Query]
   , resPrograms :: Res.Programs
+  , resMesh :: Mesh
   }
 
 instance Res.HasPrograms Resources where
@@ -149,7 +150,11 @@ loadResources :: IO Resources
 loadResources = do
     tex <- loadTexture "share/gfx/checker.bmp"
     qs <- gens 4
-    pure $ Resources tex qs Res.emptyPrograms
+    eitherMesh <- loadHmd "models/player-spaceship.hmd"
+    mesh <- case eitherMesh of
+              Left err -> putStrLn err >> pure cube
+              Right m -> pure m
+    pure $ Resources tex qs Res.emptyPrograms mesh
 
 freeResources :: Resources -> IO ()
 freeResources res = do
@@ -269,10 +274,11 @@ cubeRenderer :: (MonadBaseControl IO m, MonadState World m) =>
                 Transform -> m ()
 cubeRenderer transform = do
   mainProg <- Res.loadProgram mainProgramDesc
+  res <- gets resources
   liftBase $ do
     useProgram mainProg
     uniformProjection mainProg
-    let vertexCount = 3 * length (meshFaces cube)
+    let vertexCount = 3 * length (meshFaces (resMesh res))
         model = transform2M44 transform
     setModelTransform mainProg model
     drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
