@@ -1,10 +1,11 @@
 module Hasgel.Mesh (
-  Face(..), Mesh(..), cube, loadHmd, loadObj
+  Face(..), Mesh(..), meshVertexCount, cube, loadHmd, loadObj
 ) where
 
 import Control.Monad (replicateM)
 import Data.Binary (Binary (..), decodeFileOrFail, getWord8, putWord8)
 import Data.Char (ord)
+import Data.List (findIndex, nub, sort)
 import Data.Word (Word16)
 
 import qualified Linear as L
@@ -14,7 +15,7 @@ import qualified Hasgel.Mesh.OBJ as OBJ
 
 data Mesh = Mesh
   { meshVertices :: [L.V3 Float]
-  , meshNormals :: Maybe [L.V3 Float]
+  , meshNormals :: [L.V3 Float]
   , meshUvs :: Maybe [L.V2 Float]
   , meshFaces :: [Face]
   } deriving (Show)
@@ -48,6 +49,9 @@ instance Binary Face where
 
   get = Face <$> get <*> get <*> get
 
+meshVertexCount :: Mesh -> Int
+meshVertexCount = (3 *) . length . meshVertices
+
 -- | Load the subset of Wavefront OBJ format.
 loadObj :: FilePath -> IO (Either String Mesh)
 loadObj fp = fmap obj2Mesh <$> OBJ.parseFile fp
@@ -62,12 +66,25 @@ loadHmd fp = do
 
 obj2Mesh :: OBJ -> Mesh
 obj2Mesh (OBJ verts normals uvs faces) =
-  Mesh verts (Just normals) (Just uvs) $ convertFace <$> faces
+  rearrangeMesh $ Mesh verts normals (Just uvs) $ convertFace <$> faces
   where convertFace ((av, avt, avn), (bv, bvt, bvn), (cv, cvt, cvn)) =
           Face [av, bv, cv] (sequence [avt, bvt, cvt]) $ sequence [avn, bvn, cvn]
 
+-- | Reorder vertices and normals and adjust face vertex indices so that they
+-- can be indexed in OpenGL.
+rearrangeMesh :: Mesh -> Mesh
+rearrangeMesh mesh =
+  let no = normalOrder $ meshFaces mesh
+      vs = reorderVertices (meshVertices mesh) $ map fst no
+      norms = reorderVertices (meshNormals mesh) $ map snd no
+      faces = flip reorderFaceIxs no <$> (meshFaces mesh)
+  in Mesh vs norms Nothing faces
+
 cube :: Mesh
-cube = Mesh {
+cube = rearrangeMesh cube'
+
+cube' :: Mesh
+cube' = Mesh {
   meshVertices = [ L.V3 (-1) (-1)   1,
                    L.V3 (-1) (-1) (-1),
                    L.V3   1  (-1) (-1),
@@ -90,12 +107,38 @@ cube = Mesh {
                   Face [4, 3, 8] Nothing $ Just [5, 5, 5],
                   Face [5, 1, 8] Nothing $ Just [6, 6, 6]
                 ]
+  , meshNormals = [ L.V3   0 (-1)  0,
+                    L.V3   0   1   0,
+                    L.V3 (-1)  0   0,
+                    L.V3   0   0 (-1),
+                    L.V3   1   0   0,
+                    L.V3   0   0   1
+                  ]
   , meshUvs = Nothing
-  , meshNormals = Just [ L.V3   0 (-1)  0,
-                         L.V3   0   1   0,
-                         L.V3 (-1)  0   0,
-                         L.V3   0   0 (-1),
-                         L.V3   1   0   0,
-                         L.V3   0   0   1
-                       ]
   }
+
+normalOrder :: [Face] -> [(Word16, Word16)]
+normalOrder = nub . sort . go
+  where go [] = []
+        go ((Face _ _ Nothing):fs) = go fs
+        go ((Face vs _ (Just ns)):fs) = zip vs ns ++ go fs
+
+reorderVertices :: [a] -> [Word16] -> [a]
+reorderVertices vs = go
+  where go [] = []
+        go (i:ixs) = (vs !! (fromIntegral i - 1)):(go ixs)
+
+reorderFaceIxs :: Face -> [(Word16, Word16)] -> Face
+reorderFaceIxs f@(Face vs _ (Just ns)) ixs =
+  f { faceVertexIx = fst $ go vs ns,
+      faceNormalIx = Just . snd $ go vs ns }
+  where go [] _ = ([], [])
+        go _ [] = ([], [])
+        go (v:tv) (n:tn)
+          | Just i <- findIndex (== (v, n)) ixs =
+              let (vs', ns') = go tv tn
+              in (1 + fromIntegral i:vs', 1 + fromIntegral i:ns')
+          | otherwise = let (vs', ns') = go tv tn
+                        in (v:vs', n:ns')
+reorderFaceIxs f _ = f
+
