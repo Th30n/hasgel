@@ -25,7 +25,7 @@ import Hasgel.Game (GameState (..), Player (..), PlayerCmd (..), Ticcmd,
                     addTiccmd, buildTiccmd, gameState, ticGame)
 import Hasgel.GL
 import Hasgel.Input (InputEvent (..), KeyboardKey (..), getEvents)
-import Hasgel.Mesh (Face (..), Mesh (..), cube, loadHmd)
+import Hasgel.Mesh (Face (..), Mesh (..), cube, loadHmd, meshVertexCount)
 import qualified Hasgel.Resources as Res
 import qualified Hasgel.SDL as MySDL
 import Hasgel.Simulation (Milliseconds, Simulation (..), Time (..), simulate,
@@ -91,8 +91,8 @@ genIndexBuffer mesh = do
   pure buf
 
 parseArgs :: [String] -> DemoState
-parseArgs ["-record", fp] = Record fp
-parseArgs ["-playdemo", fp] = Playback fp
+parseArgs ("-record":fp:_) = Record fp
+parseArgs ("-playdemo":fp:_) = Playback fp
 parseArgs _ = NoDemo
 
 main :: IO ()
@@ -108,6 +108,11 @@ main =
       bufferData GL_ARRAY_BUFFER (meshVertices (resMesh res)) GL_STATIC_DRAW
       glVertexAttribPointer 0 3 GL_FLOAT GL_FALSE 0 nullPtr
       glEnableVertexAttribArray 0
+      normalBuf <- gen :: IO Buffer
+      glBindBuffer GL_ARRAY_BUFFER $ object normalBuf
+      bufferData GL_ARRAY_BUFFER (meshNormals (resMesh res)) GL_STATIC_DRAW
+      glVertexAttribPointer 1 3 GL_FLOAT GL_FALSE 0 nullPtr
+      glEnableVertexAttribArray 1
       indexBuf <- genIndexBuffer $ resMesh res
       glEnable GL_DEPTH_TEST
       args <- getArgs
@@ -127,10 +132,15 @@ mainProgramDesc :: Res.ProgramDesc
 mainProgramDesc = [("shaders/basic.vert", VertexShader),
                    ("shaders/basic.frag", FragmentShader)]
 
+normalsProgramDesc :: Res.ProgramDesc
+normalsProgramDesc = [("shaders/basic.vert", VertexShader),
+                      ("shaders/normals.geom", GeometryShader),
+                      ("shaders/color.frag", FragmentShader)]
+
 axisProgramDesc :: Res.ProgramDesc
 axisProgramDesc = [("shaders/axis.vert", VertexShader),
                    ("shaders/axis.geom", GeometryShader),
-                   ("shaders/axis.frag", FragmentShader)]
+                   ("shaders/color.frag", FragmentShader)]
 
 data Resources = Resources
   { texture :: Texture
@@ -274,14 +284,22 @@ cubeRenderer :: (MonadBaseControl IO m, MonadState World m) =>
                 Transform -> m ()
 cubeRenderer transform = do
   mainProg <- Res.loadProgram mainProgramDesc
+  normalsProg <- Res.loadProgram normalsProgramDesc
   res <- gets resources
+  let renderCube = renderMesh (resMesh res) transform
   liftBase $ do
-    useProgram mainProg
-    uniformProjection mainProg
-    let vertexCount = 3 * length (meshFaces (resMesh res))
-        model = transform2M44 transform
-    setModelTransform mainProg model
-    drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
+    renderCube mainProg
+    args <- getArgs
+    when ("-normals" `elem` args) $ renderCube normalsProg
+
+renderMesh :: Mesh -> Transform -> Program -> IO ()
+renderMesh mesh transform prog = do
+  useProgram prog
+  uniformProjection prog
+  let vertexCount = meshVertexCount mesh
+      model = transform2M44 transform
+  setModelTransform prog model
+  drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
 
 -- | Interval for updating the frame timer information.
 timerInterval :: Milliseconds
