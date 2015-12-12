@@ -1,9 +1,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Hasgel.GL.Buffer (
-  Buffer, BufferData(..), BufferTarget, BufferUsage, BoundBuffer,
+  Buffer, BufferData(..), BufferTarget(..), BufferUsage(..), BoundBuffer,
   bindBuffer, bufferData,
-  clearBufferfv, clearDepthBuffer
+  clearBufferfv, clearDepthBuffer,
+  vertexAttribPointer
 ) where
 
 import Control.Monad.IO.Class (MonadIO (..))
@@ -27,8 +28,21 @@ instance Gen Buffer where
     glGenBuffers (fromIntegral n) ptr
     map Buffer <$> peekArray n ptr
 
-type BufferTarget = GLenum
-type BufferUsage = GLenum
+data BufferTarget =
+  ArrayBuffer
+  | ElementArrayBuffer
+  deriving (Show, Ord, Eq)
+
+marshalBufferTarget :: BufferTarget -> GLenum
+marshalBufferTarget ArrayBuffer = GL_ARRAY_BUFFER
+marshalBufferTarget ElementArrayBuffer = GL_ELEMENT_ARRAY_BUFFER
+
+data BufferUsage =
+  StaticDraw
+  deriving (Show, Ord, Eq)
+
+marshalBufferUsage :: BufferUsage -> GLenum
+marshalBufferUsage StaticDraw = GL_STATIC_DRAW
 
 class BufferData a where
   withDataPtr :: (BufferData a, MonadIO m) => a -> (Ptr () -> IO b) -> m b
@@ -54,13 +68,14 @@ instance Applicative BoundBuffer where
 
 bindBuffer :: BufferTarget -> Buffer -> BoundBuffer a -> IO a
 bindBuffer target buffer actions = do
-  glBindBuffer target $ object buffer
+  glBindBuffer (marshalBufferTarget target) $ object buffer
   withBoundBuffer actions target
 
 bufferData :: BufferData a => a -> BufferUsage -> BoundBuffer ()
 bufferData values usage = BoundBuffer $ \target ->
   let bytes = fromIntegral $ sizeOfData values
-  in withDataPtr values $ \ptr -> glBufferData target bytes ptr usage
+  in withDataPtr values $ \ptr ->
+  glBufferData (marshalBufferTarget target) bytes ptr (marshalBufferUsage usage)
 
 clearBufferfv :: MonadIO m => ClearBuffer -> DrawBuffer -> [GLfloat] -> m ()
 clearBufferfv buffer drawBuffer values =
@@ -68,3 +83,10 @@ clearBufferfv buffer drawBuffer values =
 
 clearDepthBuffer :: MonadIO m => GLfloat -> m ()
 clearDepthBuffer value = liftIO . with value $ glClearBufferfv GL_DEPTH 0
+
+vertexAttribPointer :: MonadIO m =>
+                       GLuint -> GLint -> GLenum -> GLboolean ->
+                       GLsizei -> Ptr () -> m ()
+vertexAttribPointer index size typ normalize stride offset = do
+  glEnableVertexAttribArray index
+  glVertexAttribPointer index size typ normalize stride offset
