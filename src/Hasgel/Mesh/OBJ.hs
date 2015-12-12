@@ -8,6 +8,7 @@ import Control.Applicative ((<|>))
 import Data.String (IsString (..))
 import Data.Word (Word16)
 
+import Control.DeepSeq (NFData (..))
 -- Don't handle non ASCII at all.
 import Data.Attoparsec.ByteString.Char8 ((<?>))
 import qualified Data.Attoparsec.ByteString.Char8 as A
@@ -24,6 +25,12 @@ data OBJ = OBJ
   , objUvs :: [UV]
   , objFaces :: [Face]
   } deriving (Show)
+
+instance NFData OBJ where
+  rnf obj = rnf (objVertices obj) `seq`
+            rnf (objNormals obj) `seq`
+            rnf (objUvs obj) `seq`
+            rnf (objFaces obj)
 
 data OBJToken = VertexToken !VertexData | ElementToken !ElementData
 

@@ -1,12 +1,18 @@
 module Hasgel.Mesh (
   Mesh(..), meshVertexCount, meshVertexIx,
-  cube, loadHmd, loadObj
+  cube, loadHmd, loadObj,
+  -- For benchmarks
+  obj2Mesh
 ) where
 
 import Control.Monad (replicateM)
+import Data.Array (Array, (!))
+import qualified Data.Array as A
 import Data.Binary (Binary (..), decodeFileOrFail, getWord8, putWord8)
 import Data.Char (ord)
-import Data.List (elemIndex, nub, sort)
+import Data.List (group, sort)
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
 import Data.Word (Word16)
 
 import Control.DeepSeq (NFData (..))
@@ -84,9 +90,13 @@ obj2Mesh (OBJ verts normals _ faces) =
 rearrangeMesh :: [FaceDesc] -> [L.V3 Float] -> [L.V3 Float]  -> Mesh
 rearrangeMesh faces vertices normals =
   let no = normalOrder faces
-      vs = reorderVertices vertices $ map fst no
-      norms = reorderVertices normals $ map snd no
-      fs = flip reorderFaceIxs no <$> faces
+      len = length vertices - 1
+      arrayVertices = A.listArray (0, len) vertices
+      vs = reorderVertices arrayVertices $ map fst no
+      arrayNormals = A.listArray (0, len) normals
+      norms = reorderVertices arrayNormals $ map snd no
+      ixsMap = M.fromList $ zip no [0..]
+      fs = flip reorderFaceIxs ixsMap <$> faces
   in Mesh vs norms Nothing fs
 
 cube :: Mesh
@@ -128,21 +138,20 @@ cube' = (
   ])
 
 normalOrder :: [FaceDesc] -> [(Word16, Word16)]
-normalOrder = nub . sort . go
+normalOrder = nubSorted . sort . go
   where go [] = []
         go (FaceDesc (_, _, Nothing) : fs) = go fs
         go (FaceDesc (vs, _, Just ns) : fs) = zip vs ns ++ go fs
+        nubSorted = map head . group
 
-reorderVertices :: [a] -> [Word16] -> [a]
-reorderVertices vs = map (\i -> vs !! (fromIntegral i - 1))
+reorderVertices :: Array Int a -> [Word16] -> [a]
+reorderVertices vs = map (\i -> vs ! (fromIntegral i - 1))
 
-reorderFaceIxs :: FaceDesc -> [(Word16, Word16)] -> Face
+reorderFaceIxs :: FaceDesc -> Map (Word16, Word16) Word16 -> Face
 reorderFaceIxs (FaceDesc (vs, _, Just ns)) ixs =
   Face $ go vs ns
   where go [] _ = []
         go _ [] = []
-        go (v:tv) (n:tn)
-          | Just i <- elemIndex (v, n) ixs = fromIntegral i : go tv tn
-          | otherwise = v - 1 : go tv tn
+        go (v:tv) (n:tn) = let i = M.findWithDefault (v - 1) (v, n) ixs
+                           in i : go tv tn
 reorderFaceIxs (FaceDesc (vs, _, _)) _ = Face vs
-
