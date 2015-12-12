@@ -1,12 +1,9 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Hasgel.GL (
   module GL,
-  VertexArray, Texture, Index(..), Buffer, BufferData(..),
+  VertexArray, Texture, Index(..),
   Query, GLError(..),
   getError, throwError,
   vertexAttrib4f, vertexAttrib3f,
-  clearBufferfv, clearDepthBuffer, bufferData,
   drawElements,
   beginQuery, endQuery, getQueryResult, withQuery, queryCounter
 ) where
@@ -17,11 +14,12 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import Data.Word (Word64)
-import Foreign (Ptr, Storable (..), alloca, allocaArray, castPtr, peek,
-                peekArray, with, withArray, withArrayLen)
+import Foreign (Ptr, Storable (..), alloca, allocaArray, peek, peekArray,
+                withArrayLen)
 import Graphics.GL.Core45
 import Graphics.GL.Types
 
+import Hasgel.GL.Buffer as GL
 import Hasgel.GL.Object as GL
 import Hasgel.GL.Program as GL
 import Hasgel.GL.Shader as GL
@@ -65,29 +63,6 @@ instance Gen Texture where
     glGenTextures (fromIntegral n) texPtr
     map Texture <$> peekArray n texPtr
 
-newtype Buffer = Buffer GLuint deriving (Show)
-
-instance Object Buffer where
-  object (Buffer obj) = obj
-  deletes bufs = liftIO . withArrayLen (object <$> bufs) $ \n ptr ->
-    glDeleteBuffers (fromIntegral n) ptr
-
-instance Gen Buffer where
-  gens n = liftIO . allocaArray n $ \ptr -> do
-    glGenBuffers (fromIntegral n) ptr
-    map Buffer <$> peekArray n ptr
-
-type BufferTarget = GLenum
-type BufferUsage = GLenum
-
-class BufferData a where
-  withDataPtr :: (BufferData a, MonadIO m) => a -> (Ptr () -> IO b) -> m b
-  sizeOfData :: BufferData a => a -> Int
-
-instance Storable a => BufferData [a] where
-  withDataPtr vs action = liftIO . withArray vs $ action . castPtr
-  sizeOfData vs = length vs * sizeOf (undefined :: a)
-
 newtype Index = Index GLuint deriving (Show)
 
 newtype Query = Query GLuint deriving (Show)
@@ -103,11 +78,8 @@ instance Gen Query where
     map Query <$> peekArray n ptr
 
 type QueryTarget = GLenum
-type ClearBuffer = GLenum
 type DrawMode = GLenum
 type DataType = GLenum
-
-type DrawBuffer = GLint
 
 -- | Converts from numerical representation to 'GLError'
 unmarshalGLError :: GLenum -> Maybe GLError
@@ -135,19 +107,6 @@ vertexAttrib4f (Index index) = glVertexAttrib4f index
 
 vertexAttrib3f :: MonadIO m => Index -> GLfloat -> GLfloat -> GLfloat -> m ()
 vertexAttrib3f (Index index) = glVertexAttrib3f index
-
-clearBufferfv :: MonadIO m => ClearBuffer -> DrawBuffer -> [GLfloat] -> m ()
-clearBufferfv buffer drawBuffer values =
-  liftIO . withArray values $ glClearBufferfv buffer drawBuffer
-
-clearDepthBuffer :: MonadIO m => GLfloat -> m ()
-clearDepthBuffer value = liftIO . with value $ glClearBufferfv GL_DEPTH 0
-
-bufferData :: (MonadIO m, BufferData a) =>
-              BufferTarget -> a -> BufferUsage -> m ()
-bufferData target values usage =
-  let bytes = fromIntegral $ sizeOfData values
-  in withDataPtr values $ \ptr -> glBufferData target bytes ptr usage
 
 drawElements :: (Integral a, MonadIO m) =>
                 DrawMode -> a -> DataType -> Ptr () -> m ()

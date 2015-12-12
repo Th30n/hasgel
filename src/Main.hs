@@ -86,8 +86,8 @@ genIndexBuffer :: Mesh -> IO Buffer
 genIndexBuffer mesh = do
   let ixs = meshVertexIx mesh
   buf <- gen
-  glBindBuffer GL_ELEMENT_ARRAY_BUFFER $ object buf
-  bufferData GL_ELEMENT_ARRAY_BUFFER ixs GL_STATIC_DRAW
+  bindBuffer GL_ELEMENT_ARRAY_BUFFER buf $
+    bufferData ixs GL_STATIC_DRAW
   pure buf
 
 parseArgs :: [String] -> DemoState
@@ -103,14 +103,14 @@ main =
     withResources $ \res -> do
       vao <- gen :: IO VertexArray
       glBindVertexArray $ object vao
-      buf <- gen :: IO Buffer
-      glBindBuffer GL_ARRAY_BUFFER $ object buf
-      bufferData GL_ARRAY_BUFFER (meshVertices (resMesh res)) GL_STATIC_DRAW
+      buf <- gen
+      bindBuffer GL_ARRAY_BUFFER buf $
+        bufferData (meshVertices (resMesh res)) GL_STATIC_DRAW
       glVertexAttribPointer 0 3 GL_FLOAT GL_FALSE 0 nullPtr
       glEnableVertexAttribArray 0
-      normalBuf <- gen :: IO Buffer
-      glBindBuffer GL_ARRAY_BUFFER $ object normalBuf
-      bufferData GL_ARRAY_BUFFER (meshNormals (resMesh res)) GL_STATIC_DRAW
+      normalBuf <- gen
+      bindBuffer GL_ARRAY_BUFFER normalBuf $
+        bufferData (meshNormals (resMesh res)) GL_STATIC_DRAW
       glVertexAttribPointer 1 3 GL_FLOAT GL_FALSE 0 nullPtr
       glEnableVertexAttribArray 1
       indexBuf <- genIndexBuffer $ resMesh res
