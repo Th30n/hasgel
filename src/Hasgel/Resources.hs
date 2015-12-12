@@ -1,16 +1,17 @@
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts    #-}
 
 module Hasgel.Resources (
-  HasPrograms(..), Programs, ProgramDesc, ShaderDesc,
-  emptyPrograms, loadProgram, freePrograms
+  Resources(..), HasResources(..),
+  Programs, ProgramDesc, ShaderDesc,
+  withResources, emptyPrograms, loadProgram, freePrograms
 ) where
 
-import Control.Exception (Exception (..))
+import Control.Exception (Exception (..), bracket)
 import Control.Exception.Lifted (catch, catchJust)
+import Control.Monad (void)
 import Control.Monad.Base (MonadBase (..))
-import Control.Monad.State (MonadState (..), gets, modify)
+import Control.Monad.State (MonadState (..), gets, modify, runStateT)
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import qualified Data.Map.Strict as M
 import Data.Time (UTCTime)
@@ -18,20 +19,81 @@ import System.Directory (getModificationTime)
 import System.IO (hPutStrLn, stderr)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
 
+import Graphics.GL.Core45
+
 import qualified Hasgel.GL as GL
+import Hasgel.Mesh (Mesh, cube, loadHmd)
+import qualified Hasgel.SDL as SDL
 
 type ModificationTime = UTCTime
 type ShaderDesc = (FilePath, GL.ShaderType)
 type ProgramDesc = [ShaderDesc]
+
+data Resources = Resources
+  { texture :: GL.Texture
+  , timeQueries :: [GL.Query]
+  , resPrograms :: Programs
+  , resMesh :: Mesh
+  }
 
 data Programs = Programs
   { programsMap :: M.Map [ShaderDesc] (GL.Program, ModificationTime)
   , shadersMap :: M.Map FilePath GL.Shader }
   deriving (Show)
 
+newtype WrappedResources a = WrapResources { unwrapResources :: a }
+
+class HasResources s where
+  getResources :: s -> Resources
+  setResources :: s -> Resources -> s
+
 class HasPrograms s where
   getPrograms :: s -> Programs
   setPrograms :: s -> Programs -> s
+
+instance HasPrograms Resources where
+  getPrograms = resPrograms
+  setPrograms res programs = res { resPrograms = programs }
+
+instance HasResources s => HasPrograms (WrappedResources s) where
+  getPrograms = resPrograms . getResources . unwrapResources
+  setPrograms s programs =
+    let res = getResources $ unwrapResources s
+        res' = res { resPrograms = programs }
+    in WrapResources $ setResources (unwrapResources s) res'
+
+withResources :: (Resources -> IO a) -> IO a
+withResources = bracket loadResources freeResources
+
+loadResources :: IO Resources
+loadResources = do
+    tex <- loadTexture "share/gfx/checker.bmp"
+    qs <- GL.gens 4
+    eitherMesh <- loadHmd "models/player-spaceship.hmd"
+    mesh <- case eitherMesh of
+              Left err -> putStrLn err >> pure cube
+              Right m -> pure m
+    pure $ Resources tex qs emptyPrograms mesh
+
+loadTexture :: FilePath -> IO GL.Texture
+loadTexture file = do
+  s <- SDL.loadBMP file
+  tex <- GL.gen
+  glBindTexture GL_TEXTURE_2D $ GL.object tex
+  let w = fromIntegral $ SDL.surfaceW s
+      h = fromIntegral $ SDL.surfaceH s
+      pixels = SDL.surfacePixels s
+  glTexImage2D GL_TEXTURE_2D 0 GL_RGB w h 0 GL_BGR GL_UNSIGNED_BYTE pixels
+  glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_NEAREST
+  glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_NEAREST
+  SDL.freeSurface s
+  pure tex
+
+freeResources :: Resources -> IO ()
+freeResources res = do
+  GL.delete $ texture res
+  GL.deletes $ timeQueries res
+  void . freePrograms $ resPrograms res
 
 loadShader :: (HasPrograms s, MonadBaseControl IO m, MonadState s m) =>
               ShaderDesc -> m GL.Shader
@@ -58,9 +120,17 @@ reloadShader (file, _) lastShader =
 emptyPrograms :: Programs
 emptyPrograms = Programs M.empty M.empty
 
-loadProgram :: (HasPrograms s, MonadBaseControl IO m, MonadState s m) =>
-               ProgramDesc -> m GL.Program
+loadProgram :: (HasResources s, MonadBaseControl IO m, MonadState s m) =>
+                ProgramDesc -> m GL.Program
 loadProgram files = do
+  hasRes <- get
+  (a, s) <- runStateT (loadProgram' files) $ WrapResources hasRes
+  put $ unwrapResources s
+  pure a
+
+loadProgram' :: (HasPrograms s, MonadBaseControl IO m, MonadState s m) =>
+               ProgramDesc -> m GL.Program
+loadProgram' files = do
   mbProgram <- M.lookup files . programsMap <$> gets getPrograms
   case mbProgram of
     Nothing -> insertProgram files

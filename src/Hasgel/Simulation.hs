@@ -1,7 +1,8 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Hasgel.Simulation (
-  Time(..), Milliseconds, Update, Simulation(..),
+  Time(..), Milliseconds, Update, Simulation(..), HasSimulation(..),
   maxFrameSkip, frameRate, simulationStep,
   millis2Sec, simulation, simulate
   ) where
@@ -35,6 +36,10 @@ instance Traversable Simulation where
   sequenceA sim = let f = simState sim
                       sim' s = s <$ sim
                   in sim' <$> f
+
+class HasSimulation a b where
+  getSimulation :: HasSimulation a b => a -> Simulation b
+  setSimulation :: HasSimulation a b => a -> Simulation b -> a
 
 -- | Convert milliseconds to seconds.
 millis2Sec :: Fractional a => Milliseconds -> a

@@ -4,8 +4,6 @@
 module Main ( main ) where
 
 import Control.Exception (bracket)
-import Control.Lens ((^.))
-import Control.Monad.Base (MonadBase (..))
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Set (Set)
@@ -21,46 +19,19 @@ import qualified SDL
 
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
-import Hasgel.Game (GameState (..), Player (..), PlayerCmd (..), Ticcmd,
-                    addTiccmd, buildTiccmd, gameState, ticGame)
+import Hasgel.Game (GameState (..), PlayerCmd (..), Ticcmd, addTiccmd,
+                    buildTiccmd, gameState, ticGame)
 import Hasgel.GL
 import Hasgel.Input (InputEvent (..), KeyboardKey (..), getEvents)
-import Hasgel.Mesh (Mesh (..), cube, loadHmd, meshVertexCount, meshVertexIx)
-import qualified Hasgel.Resources as Res
+import Hasgel.Mesh (Mesh (..), meshVertexIx)
+import Hasgel.Rendering
+import Hasgel.Resources
 import qualified Hasgel.SDL as MySDL
-import Hasgel.Simulation (Milliseconds, Simulation (..), Time (..), simulate,
-                          simulation)
-import Hasgel.Transform (Transform (..), transform2M44)
+import Hasgel.Simulation (HasSimulation (..), Milliseconds, Simulation (..),
+                          Time (..), simulate, simulation)
 
 ortho :: L.M44 Float
 ortho = L.ortho (-10) 10 (-10) 10 (-10) 10
-
-deg2Rad :: Floating a => a -> a
-deg2Rad = ((pi / 180) *)
-
-persp :: L.M44 Float
-persp = L.perspective fovy ar n f
-        where fovy = deg2Rad 60
-              ar = 800 / 600
-              n = 0.1
-              f = 100
-
-camera :: L.M44 Float
-camera = L.lookAt eye center up
-  where eye = L.V3 0 10 21
-        center = L.V3 0 (eye ^. L._y) 0
-        up = L.V3 0 1 0
-
-uniformProjection :: MonadIO m => Program -> m ()
-uniformProjection prog = do
-  mbLoc <- getUniformLocation prog "proj"
-  case mbLoc of
-    Just loc -> useProgram prog >> uniform loc (persp L.!*! camera)
-    _ -> pure ()
-
-class HasSimulation a b where
-  getSimulation :: HasSimulation a b => a -> Simulation b
-  setSimulation :: HasSimulation a b => a -> Simulation b -> a
 
 instance HasSimulation World GameState where
   getSimulation = worldSimulation
@@ -76,11 +47,6 @@ runTics dt = do
 updateGame :: DemoState -> Set PlayerCmd -> Time -> GameState -> GameState
 updateGame (Playback _) _ time gs = ticGame time gs
 updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds time
-
-setModelTransform :: MonadIO m => Program -> L.M44 Float -> m ()
-setModelTransform prog model = do
-  Just loc <- getUniformLocation prog "model"
-  useProgram prog >> uniform loc model
 
 genIndexBuffer :: Mesh -> IO Buffer
 genIndexBuffer mesh = do
@@ -128,50 +94,6 @@ main =
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
 
-mainProgramDesc :: Res.ProgramDesc
-mainProgramDesc = [("shaders/basic.vert", VertexShader),
-                   ("shaders/basic.frag", FragmentShader)]
-
-normalsProgramDesc :: Res.ProgramDesc
-normalsProgramDesc = [("shaders/basic.vert", VertexShader),
-                      ("shaders/normals.geom", GeometryShader),
-                      ("shaders/color.frag", FragmentShader)]
-
-axisProgramDesc :: Res.ProgramDesc
-axisProgramDesc = [("shaders/axis.vert", VertexShader),
-                   ("shaders/axis.geom", GeometryShader),
-                   ("shaders/color.frag", FragmentShader)]
-
-data Resources = Resources
-  { texture :: Texture
-  , timeQueries :: [Query]
-  , resPrograms :: Res.Programs
-  , resMesh :: Mesh
-  }
-
-instance Res.HasPrograms Resources where
-  getPrograms = resPrograms
-  setPrograms res programs = res { resPrograms = programs }
-
-withResources :: (Resources -> IO a) -> IO a
-withResources = bracket loadResources freeResources
-
-loadResources :: IO Resources
-loadResources = do
-    tex <- loadTexture "share/gfx/checker.bmp"
-    qs <- gens 4
-    eitherMesh <- loadHmd "models/player-spaceship.hmd"
-    mesh <- case eitherMesh of
-              Left err -> putStrLn err >> pure cube
-              Right m -> pure m
-    pure $ Resources tex qs Res.emptyPrograms mesh
-
-freeResources :: Resources -> IO ()
-freeResources res = do
-  delete $ texture res
-  deletes $ timeQueries res
-  void . Res.freePrograms $ resPrograms res
-
 data Loop = Continue | Quit deriving (Eq, Show)
 
 data World = World
@@ -187,13 +109,9 @@ data World = World
 
 data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
 
-getPlayerTransform :: World -> Transform
-getPlayerTransform = playerTransform . gPlayer . simState . worldSimulation
-
-instance Res.HasPrograms World where
-  getPrograms = resPrograms . resources
-  setPrograms w programs = let res = resources w
-                           in w { resources = res { resPrograms = programs } }
+instance HasResources World where
+  getResources = resources
+  setResources w res = w { resources = res }
 
 instance FT.HasFrameTimer World where
   getFrameTimer = worldFrameTimer
@@ -255,52 +173,6 @@ clearOldTiccmds = do
   let sim' = (\gs -> gs { gOldTiccmds = [] }) <$> sim
   modify $ \w -> setSimulation w sim'
 
-axisRenderer :: (MonadBaseControl IO m, MonadState World m) => m ()
-axisRenderer = do
-  playerTrans <- gets getPlayerTransform
-  axisProgram <- Res.loadProgram axisProgramDesc
-  liftBase $ do
-    useProgram axisProgram
-    Just mvpLoc <- getUniformLocation axisProgram "mvp"
-    let model = transform2M44 playerTrans
-        mvp = persp L.!*! camera L.!*! model
-    uniform mvpLoc mvp
-    glDrawArrays GL_POINTS 0 1
-
-renderPlayerShots :: (MonadBaseControl IO m, MonadState World m) => m ()
-renderPlayerShots = do
-  playerShots <- gets $ gPlayerShots . simState . worldSimulation
-  mapM_ cubeRenderer playerShots
-
-renderInvaders :: (MonadBaseControl IO m, MonadState World m) => m ()
-renderInvaders = do
-  invaders <- gets $ gInvaders . simState . worldSimulation
-  mapM_ cubeRenderer invaders
-
-renderPlayer :: (MonadBaseControl IO m, MonadState World m) => m ()
-renderPlayer = cubeRenderer =<< gets getPlayerTransform
-
-cubeRenderer :: (MonadBaseControl IO m, MonadState World m) =>
-                Transform -> m ()
-cubeRenderer transform = do
-  mainProg <- Res.loadProgram mainProgramDesc
-  normalsProg <- Res.loadProgram normalsProgramDesc
-  res <- gets resources
-  let renderCube = renderMesh (resMesh res) transform
-  liftBase $ do
-    renderCube mainProg
-    args <- getArgs
-    when ("-normals" `elem` args) $ renderCube normalsProg
-
-renderMesh :: Mesh -> Transform -> Program -> IO ()
-renderMesh mesh transform prog = do
-  useProgram prog
-  uniformProjection prog
-  let vertexCount = meshVertexCount mesh
-      model = transform2M44 transform
-  setModelTransform prog model
-  drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
-
 -- | Interval for updating the frame timer information.
 timerInterval :: Milliseconds
 timerInterval = 500
@@ -349,17 +221,3 @@ deleteCmd cmd = modifyCmds (Set.delete cmd)
 
 modifyCmds :: (Set PlayerCmd -> Set PlayerCmd) -> World -> World
 modifyCmds f w = w { worldPlayerCmds = f (worldPlayerCmds w) }
-
-loadTexture :: FilePath -> IO Texture
-loadTexture file = do
-  s <- MySDL.loadBMP file
-  tex <- gen
-  glBindTexture GL_TEXTURE_2D $ object tex
-  let w = fromIntegral $ MySDL.surfaceW s
-      h = fromIntegral $ MySDL.surfaceH s
-      pixels = MySDL.surfacePixels s
-  glTexImage2D GL_TEXTURE_2D 0 GL_RGB w h 0 GL_BGR GL_UNSIGNED_BYTE pixels
-  glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_NEAREST
-  glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_NEAREST
-  MySDL.freeSurface s
-  pure tex
