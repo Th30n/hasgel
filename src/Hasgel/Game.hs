@@ -10,7 +10,7 @@ import qualified Linear as L
 
 import Hasgel.Game.Movement (tryMove)
 import Hasgel.Simulation (Milliseconds, Time (..), millis2Sec)
-import Hasgel.Transform (Transform (..), translate)
+import Hasgel.Transform (Transform (..), defaultTransform, rotate, translate)
 
 -- | State of the game.
 data GameState = GameState
@@ -168,9 +168,7 @@ playerShoot time player shots True
   | timeCurrent time < playerShotTime player = (player, shots)
   | otherwise = let trans = playerTransform player
                     shotPos = L.V3 0 1 0 + transformPosition trans
-                    newShot = Transform { transformScale = L.V3 0.25 0.5 0.25,
-                                          transformRotation = L.zero,
-                                          transformPosition = shotPos }
+                    newShot = shotTransform { transformPosition = shotPos }
                 in (player { playerShotTime = shootCooldown + timeCurrent time },
                     newShot:shots)
 
@@ -186,13 +184,18 @@ createInvaders = let fstRow x = invader x 15
                      xs = [-4, 0, 4]
                  in map fstRow xs ++ map sndRow xs
 
+shotTransform :: Transform
+shotTransform =
+  rotate defaultTransform { transformScale = L.V3 0.25 0.25 0.25 } $ L.V3 90 0 0
+
 invader :: Float -> Float -> Transform
-invader x y = Transform L.zero (L.V3 1 1 1) (L.V3 x y 0)
+invader x y =
+  rotate defaultTransform { transformPosition = L.V3 x y 0 } $ L.V3 90 0 0
 
 gameState :: [Ticcmd] -> GameState
 gameState ticcmds =
-  let model = Transform L.zero (L.V3 1 1 1) L.zero
-      player = Player { playerTransform = model, playerShotTime = 0 }
+  let player = Player { playerTransform = rotate defaultTransform (L.V3 90 180 0),
+                        playerShotTime = 0 }
   in GameState { gTiccmds = ticcmds, gOldTiccmds = [],
                  gPlayer = player, gPlayerShots = [],
                  gInvaders = createInvaders,

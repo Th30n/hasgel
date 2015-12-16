@@ -18,7 +18,7 @@ import qualified Linear as L
 
 import Hasgel.Simulation (Simulation(..), HasSimulation(..))
 import Hasgel.Game (GameState(..), Player(..))
-import Hasgel.Transform(Transform(..), transform2M44)
+import Hasgel.Transform(Transform(..), transform2M44, deg2Rad)
 import Hasgel.GL (ShaderType(..), Program, useProgram, drawElements,
                   uniform, getUniformLocation)
 import Hasgel.Mesh (Mesh, meshVertexCount)
@@ -38,9 +38,6 @@ axisProgramDesc :: Res.ProgramDesc
 axisProgramDesc = [("shaders/axis.vert", VertexShader),
                    ("shaders/axis.geom", GeometryShader),
                    ("shaders/color.frag", FragmentShader)]
-
-deg2Rad :: Floating a => a -> a
-deg2Rad = ((pi / 180) *)
 
 persp :: L.M44 Float
 persp = L.perspective fovy ar n f
