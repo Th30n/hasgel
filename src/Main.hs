@@ -95,10 +95,10 @@ withDisplay = bracket createDisplay destroyDisplay
 data Loop = Continue | Quit deriving (Eq, Show)
 
 data World = World
-  { loopState :: Loop
-  , display :: Display
+  { worldLoopState :: Loop
+  , worldDisplay :: Display
   , worldTime :: Time
-  , resources :: Resources
+  , worldResources :: Resources
   , worldFrameTimer :: FT.FrameTimer
   , worldSimulation :: Simulation GameState
   , worldPlayerCmds :: Set PlayerCmd
@@ -108,8 +108,8 @@ data World = World
 data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
 
 instance HasResources World where
-  getResources = resources
-  setResources w res = w { resources = res }
+  getResources = worldResources
+  setResources w res = w { worldResources = res }
 
 instance FT.HasFrameTimer World where
   getFrameTimer = worldFrameTimer
@@ -120,15 +120,17 @@ createWorld disp res gs demo = do
   time <- SDL.ticks
   let [q1, q2, q3, q4] = timeQueries res
       ft = FT.createFrameTimer ((q1, q2), (q3, q4)) time
-  return World { loopState = Continue, display = disp, worldTime = Time time 0,
-                 resources = res, worldFrameTimer = ft,
+  return World { worldLoopState = Continue,
+                 worldDisplay = disp,
+                 worldTime = Time time 0,
+                 worldResources = res, worldFrameTimer = ft,
                  worldSimulation = simulation gs,
                  worldPlayerCmds = Set.empty,
                  worldDemoState = demo }
 
 loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
 loop = do
-  ls <- gets loopState
+  ls <- gets worldLoopState
   when (ls /= Quit) $ do
     liftIO getEvents >>= mapM_ handleEvent
     gets (timeDelta . worldTime) >>= runTics
@@ -138,7 +140,7 @@ loop = do
       Record fp -> recordDemo fp
       _ -> return ()
     clearOldTiccmds
-    disp <- gets display
+    disp <- gets worldDisplay
     renderDisplay disp . FT.withFrameTimer $ do
       clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
       clearDepthBuffer 1
@@ -154,7 +156,7 @@ loop = do
 checkDemoEnd :: MonadState World m => m ()
 checkDemoEnd = do
   ticcmds <- gets $ gTiccmds . simState . getSimulation
-  when (null ticcmds) $ modify $ \w -> w { loopState = Quit }
+  when (null ticcmds) $ modify $ \w -> w { worldLoopState = Quit }
 
 readDemo :: FilePath -> IO [Ticcmd]
 readDemo fp = concatMap read . lines <$> readFile fp
@@ -187,7 +189,7 @@ displayFrameRate = do
     let cpuTime = FT.getCPUTime ft time
         gpuTime = FT.getGPUTime ft
         title = printf titleFormat cpuTime gpuTime
-    win <- gets (getWindow . display)
+    win <- gets (getWindow . worldDisplay)
     MySDL.setWindowTitle win title
     modify . flip FT.setFrameTimer $ FT.resetFrameTimer ft time
 
@@ -200,7 +202,7 @@ updateTime = do
                                         timeDelta = newTime - oldTime } }
 
 handleEvent :: (MonadIO m, MonadState World m) => InputEvent -> m ()
-handleEvent QuitEvent = modify $ \w -> w { loopState = Quit }
+handleEvent QuitEvent = modify $ \w -> w { worldLoopState = Quit }
 handleEvent (KeyPressedEvent KeyLeft) = modify $ insertCmd MoveLeft
 handleEvent (KeyReleasedEvent KeyLeft) = modify $ deleteCmd MoveLeft
 handleEvent (KeyPressedEvent KeyRight) = modify $ insertCmd MoveRight
