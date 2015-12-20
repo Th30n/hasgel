@@ -69,7 +69,7 @@ loadResources :: IO Resources
 loadResources = do
     tex <- loadTexture "share/gfx/checker.bmp"
     qs <- GL.gens 4
-    eitherMesh <- loadHmd "models/player-ship.hmd"
+    eitherMesh <- loadHmd "share/models/player-ship.hmd"
     mesh <- case eitherMesh of
               Left err -> putStrLn err >> pure cube
               Right m -> pure m
