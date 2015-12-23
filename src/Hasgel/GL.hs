@@ -3,7 +3,7 @@ module Hasgel.GL (
   VertexArray, Texture, Index(..),
   Query, GLError(..),
   getError, throwError,
-  vertexAttrib4f, vertexAttrib3f,
+  bindVertexArray, vertexAttrib4f, vertexAttrib3f,
   drawElements,
   beginQuery, endQuery, getQueryResult, withQuery, queryCounter
 ) where
@@ -100,6 +100,9 @@ getError = (fromMaybe NoError . unmarshalGLError) <$> glGetError
 -- | Throws an 'GLError' on error.
 throwError :: MonadIO m => m ()
 throwError = getError >>= \e -> when (e /= NoError) $ liftIO $ throwIO e
+
+bindVertexArray :: MonadIO m => VertexArray -> m ()
+bindVertexArray = glBindVertexArray . object
 
 vertexAttrib4f :: MonadIO m => Index ->
                   GLfloat -> GLfloat -> GLfloat -> GLfloat -> m ()
