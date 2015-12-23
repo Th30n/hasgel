@@ -4,10 +4,11 @@ module Hasgel.SDL.Events (
   -- * Data types and enumerations
   SDL.Event(..),
   -- * Functions
-  pollEvent,
+  pollEvent, getKeyName
 ) where
 
 import Control.Monad.IO.Class (MonadIO (..))
+import Foreign.C.String (peekCString)
 import Foreign.Marshal.Alloc (alloca)
 import Foreign.Storable (peek)
 
@@ -28,3 +29,9 @@ pollEvent = liftIO . alloca $ \e -> do
   if r == 0
     then pure Nothing
     else Just <$> peek e
+
+-- | Returns the UTF-8 human readable representation of key name.
+getKeyName :: MonadIO m => SDL.Keycode -> m (Maybe String)
+getKeyName keyCode = do
+    keyName <- liftIO $ peekCString =<< SDL.getKeyName keyCode
+    pure $ if null keyName then Nothing else Just keyName

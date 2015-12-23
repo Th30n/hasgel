@@ -103,6 +103,7 @@ data World = World
   , worldSimulation :: Simulation GameState
   , worldPlayerCmds :: Set PlayerCmd
   , worldDemoState :: DemoState
+  , worldPaused :: Bool
   }
 
 data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
@@ -126,14 +127,16 @@ createWorld disp res gs demo = do
                  worldResources = res, worldFrameTimer = ft,
                  worldSimulation = simulation gs,
                  worldPlayerCmds = Set.empty,
-                 worldDemoState = demo }
+                 worldDemoState = demo,
+                 worldPaused = False }
 
 loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
 loop = do
   ls <- gets worldLoopState
   when (ls /= Quit) $ do
     liftIO getEvents >>= mapM_ handleEvent
-    gets (timeDelta . worldTime) >>= runTics
+    paused <- gets worldPaused
+    unless paused $ gets (timeDelta . worldTime) >>= runTics
     demoState <- gets worldDemoState
     case demoState of
       Playback _ -> checkDemoEnd
@@ -209,15 +212,20 @@ handleEvent (KeyPressedEvent KeyRight) = modify $ insertCmd MoveRight
 handleEvent (KeyReleasedEvent KeyRight) = modify $ deleteCmd MoveRight
 handleEvent (KeyPressedEvent KeySpace) = modify $ insertCmd Shoot
 handleEvent (KeyReleasedEvent KeySpace) = modify $ deleteCmd Shoot
+handleEvent (KeyPressedEvent KeyP) = modify pausePressed
 handleEvent (KeyPressedEvent key) = liftIO $ printf "Pressed %s\n" (show key)
 handleEvent (KeyReleasedEvent key) = liftIO $ printf "Released %s\n" (show key)
 handleEvent _ = pure ()
 
 insertCmd :: PlayerCmd -> World -> World
-insertCmd cmd = modifyCmds (Set.insert cmd)
+insertCmd cmd w | worldPaused w = w
+                | otherwise = modifyCmds (Set.insert cmd) w
 
 deleteCmd :: PlayerCmd -> World -> World
 deleteCmd cmd = modifyCmds (Set.delete cmd)
 
 modifyCmds :: (Set PlayerCmd -> Set PlayerCmd) -> World -> World
 modifyCmds f w = w { worldPlayerCmds = f (worldPlayerCmds w) }
+
+pausePressed :: World -> World
+pausePressed w = w { worldPaused = not $ worldPaused w }
