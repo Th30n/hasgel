@@ -14,7 +14,6 @@ import System.IO (IOMode (..), hPrint, withFile)
 import Text.Printf (printf)
 
 import Graphics.GL.Core45
-import qualified Linear as L
 import qualified SDL
 
 import Hasgel.Display
@@ -29,9 +28,6 @@ import Hasgel.Resources
 import qualified Hasgel.SDL as MySDL
 import Hasgel.Simulation (HasSimulation (..), Milliseconds, Simulation (..),
                           Time (..), simulate, simulation)
-
-ortho :: L.M44 Float
-ortho = L.ortho (-10) 10 (-10) 10 (-10) 10
 
 instance HasSimulation World GameState where
   getSimulation = worldSimulation
@@ -67,8 +63,7 @@ main =
     glViewport 0 0 800 600
     glActiveTexture GL_TEXTURE0
     withResources $ \res -> do
-      vao <- gen :: IO VertexArray
-      glBindVertexArray $ object vao
+      bindVertexArray $ resVao res
       buf <- gen
       bindBuffer ArrayBuffer buf $
         bufferData (meshVertices (resMesh res)) StaticDraw
@@ -87,7 +82,6 @@ main =
       void . execStateT loop =<< createWorld d res (gameState ticcmds) demo
       delete indexBuf
       delete buf
-      delete vao
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
@@ -151,6 +145,9 @@ loop = do
       renderPlayerShots
       renderInvaders
       axisRenderer
+      glViewport 0 0 140 100
+      renderCameraOrientation
+      glViewport 0 0 800 600
       throwError
     displayFrameRate
     updateTime
