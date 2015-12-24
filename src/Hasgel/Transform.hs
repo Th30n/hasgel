@@ -1,6 +1,7 @@
 module Hasgel.Transform (
-  Transform(..), defaultTransform, deg2Rad,
-  transform2M44, transformRotationM44, translate, rotate
+  Transform(..), Space(..), defaultTransform, deg2Rad,
+  transform2M44, transformRotationM44,
+  translate, rotate, rotateLocal, rotateWorld
 ) where
 
 import Control.Lens ((.~))
@@ -8,11 +9,12 @@ import Linear ((!*!))
 import qualified Linear as L
 
 data Transform = Transform
-  {
-    transformRotation :: L.Quaternion Float
+  { transformRotation :: L.Quaternion Float
   , transformScale :: L.V3 Float
   , transformPosition :: L.V3 Float
   } deriving (Show, Eq)
+
+data Space = SpaceLocal | SpaceWorld deriving (Show, Eq)
 
 deg2Rad :: Floating a => a -> a
 deg2Rad = ((pi / 180) *)
@@ -35,12 +37,22 @@ translate :: Transform -> L.V3 Float -> Transform
 translate transform dv = let pos = transformPosition transform
                          in transform { transformPosition = pos + dv }
 
--- | Rotate in local coordinate system.
-rotate :: Transform -> L.V3 Float -> Transform
-rotate transform (L.V3 x y z) =
+rotate :: Space -> Transform -> L.V3 Float -> Transform
+rotate relativeTo transform (L.V3 x y z) =
   let rot = transformRotation transform
       [right, up, forward] = L.basis
       xRot = L.axisAngle right $ deg2Rad x
       yRot = L.axisAngle up $ deg2Rad y
       zRot = L.axisAngle forward $ deg2Rad z
-  in transform { transformRotation = rot * xRot * yRot * zRot }
+      rot' = xRot * yRot * zRot
+      newRot = case relativeTo of
+                 SpaceLocal -> rot' * rot
+                 SpaceWorld -> rot * rot'
+  in transform { transformRotation = newRot }
+
+-- | Rotate in local coordinate system.
+rotateLocal :: Transform -> L.V3 Float -> Transform
+rotateLocal = rotate SpaceLocal
+
+rotateWorld :: Transform -> L.V3 Float -> Transform
+rotateWorld = rotate SpaceWorld

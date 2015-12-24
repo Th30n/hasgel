@@ -10,7 +10,8 @@ import qualified Linear as L
 
 import Hasgel.Game.Movement (tryMove)
 import Hasgel.Simulation (Milliseconds, Time (..), millis2Sec)
-import Hasgel.Transform (Transform (..), defaultTransform, rotate, translate)
+import Hasgel.Transform (Transform (..), defaultTransform, rotateLocal,
+                         translate)
 
 -- | State of the game.
 data GameState = GameState
@@ -186,15 +187,18 @@ createInvaders = let fstRow x = invader x 15
 
 shotTransform :: Transform
 shotTransform =
-  rotate defaultTransform { transformScale = L.V3 0.25 0.25 0.25 } $ L.V3 90 0 0
+  let transform = defaultTransform { transformScale = L.V3 0.25 0.25 0.25 }
+  in rotateLocal transform $ L.V3 90 0 0
 
 invader :: Float -> Float -> Transform
 invader x y =
-  rotate defaultTransform { transformPosition = L.V3 x y 0 } $ L.V3 90 0 0
+  let transform = defaultTransform { transformPosition = L.V3 x y 0 }
+  in rotateLocal transform $ L.V3 90 0 0
 
 gameState :: [Ticcmd] -> GameState
 gameState ticcmds =
-  let player = Player { playerTransform = rotate defaultTransform (L.V3 90 180 0),
+  let player = Player { playerTransform =
+                          rotateLocal defaultTransform (L.V3 90 180 0),
                         playerShotTime = 0 }
   in GameState { gTiccmds = ticcmds, gOldTiccmds = [],
                  gPlayer = player, gPlayerShots = [],
