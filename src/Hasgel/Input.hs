@@ -1,9 +1,13 @@
 module Hasgel.Input (
   InputEvent(..),
   KeyboardKey(..),
+  MouseButton(..),
   getEvents,
 ) where
 
+import Data.Int (Int32)
+
+import qualified Linear as L
 import qualified SDL
 
 -- | Returns all pending events.
@@ -15,7 +19,12 @@ data InputEvent =
   QuitEvent
   | KeyPressedEvent KeyboardKey
   | KeyReleasedEvent KeyboardKey
+  | MouseMotionEvent (L.V2 Int32) [MouseButton]
   | UnknownEvent
+
+data MouseButton =
+  ButtonLeft
+  deriving (Eq, Show)
 
 data KeyboardKey =
   KeyLeft
@@ -34,6 +43,12 @@ mapEvent (SDL.Event _ (SDL.KeyboardEvent keyData)) =
   case SDL.keyboardEventKeyMotion keyData of
     SDL.Pressed -> KeyPressedEvent . mapSDLKey $ SDL.keyboardEventKeysym keyData
     SDL.Released -> KeyReleasedEvent . mapSDLKey $ SDL.keyboardEventKeysym keyData
+mapEvent (SDL.Event _ (SDL.MouseMotionEvent mouseData)) =
+  MouseMotionEvent (SDL.mouseMotionEventRelMotion mouseData) heldButtons
+  where heldButtons = foldr collect [] $ SDL.mouseMotionEventState mouseData
+        collect SDL.ButtonLeft bs = ButtonLeft : bs
+        collect _ bs = bs
+
 mapEvent _ = UnknownEvent
 
 mapSDLKey :: SDL.Keysym -> KeyboardKey
