@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Hasgel.Rendering (
-  Camera(..), defaultCamera,
+  Camera(..), defaultCamera, viewForward,
   renderCameraOrientation, renderPlayer, renderPlayerShots, renderInvaders,
   axisRenderer
 ) where
@@ -21,7 +21,7 @@ import qualified Linear as L
 
 import Hasgel.Simulation (Simulation(..), HasSimulation(..))
 import Hasgel.Game (GameState(..), Player(..))
-import Hasgel.Transform (Transform(..), transform2M44,
+import Hasgel.Transform (Transform(..), transform2M44, transformBack,
                          deg2Rad, defaultTransform)
 import qualified Hasgel.GL as GL
 import Hasgel.Mesh (Mesh, meshVertexCount)
@@ -59,16 +59,28 @@ ortho = L.ortho (-2) 2 (-2) 2 (-2) 2
 
 defaultCamera :: Camera
 defaultCamera = Camera {
-  cameraTransform = defaultTransform { transformPosition = L.V3 0 (-10) (-21) },
+  cameraTransform = defaultTransform { transformPosition = L.V3 0 10 21 },
   cameraProjection = persp }
 
+-- | Return the view rotation. This is the inverse of camera rotation.
+viewRotation :: Camera -> L.Quaternion Float
+viewRotation = L.conjugate . transformRotation . cameraTransform
+
+-- | Return the forward vector of the view orientation.
+-- This is the back vector of the camera orientation.
+viewForward :: Camera -> L.V3 Float
+viewForward = transformBack . cameraTransform
+
+-- | Return the view matrix for the given camera.
 cameraView :: Camera -> L.M44 Float
 cameraView camera =
   let transform = cameraTransform camera
-      trans = L.translation .~ transformPosition transform $ L.identity
-      rot = L.fromQuaternion $ transformRotation transform
-  in L.m33_to_m44 rot !*! trans -- Reversed order of transforms.
+      pos = -transformPosition transform
+      trans = L.translation .~ pos $ L.identity
+      rot = L.fromQuaternion $ viewRotation camera
+  in L.m33_to_m44 rot !*! trans -- Inverse of camera transform
 
+-- | Return the view projection matrix for the given camera.
 cameraViewProjection :: Camera -> L.M44 Float
 cameraViewProjection = uncurry (!*!) . (cameraProjection &&& cameraView)
 
@@ -116,7 +128,7 @@ renderMesh camera mesh transform prog = do
 renderCameraOrientation :: (HasResources s, MonadBaseControl IO m,
                             MonadState s m) => Camera -> m ()
 renderCameraOrientation camera = do
-  let rot = L.fromQuaternion . transformRotation $ cameraTransform camera
+  let rot = L.fromQuaternion $ viewRotation camera
       mvp = ortho !*! L.m33_to_m44 rot
   renderAxis 1 mvp
 

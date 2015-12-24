@@ -1,6 +1,6 @@
 module Hasgel.Transform (
   Transform(..), Space(..), defaultTransform, deg2Rad,
-  transform2M44, transformRotationM44,
+  transform2M44, transformRotationM44, transformForward, transformBack,
   translate, rotate, rotateLocal, rotateWorld
 ) where
 
@@ -15,6 +15,18 @@ data Transform = Transform
   } deriving (Show, Eq)
 
 data Space = SpaceLocal | SpaceWorld deriving (Show, Eq)
+
+forwardV3 :: L.V3 Float
+forwardV3 = L.V3 0 0 1
+
+backV3 :: L.V3 Float
+backV3 = -forwardV3
+
+rightV3 :: L.V3 Float
+rightV3 = L.V3 1 0 0
+
+upV3 :: L.V3 Float
+upV3 = L.V3 0 1 0
 
 deg2Rad :: Floating a => a -> a
 deg2Rad = ((pi / 180) *)
@@ -40,10 +52,9 @@ translate transform dv = let pos = transformPosition transform
 rotate :: Space -> Transform -> L.V3 Float -> Transform
 rotate relativeTo transform (L.V3 x y z) =
   let rot = transformRotation transform
-      [right, up, forward] = L.basis
-      xRot = L.axisAngle right $ deg2Rad x
-      yRot = L.axisAngle up $ deg2Rad y
-      zRot = L.axisAngle forward $ deg2Rad z
+      xRot = L.axisAngle rightV3 $ deg2Rad x
+      yRot = L.axisAngle upV3 $ deg2Rad y
+      zRot = L.axisAngle forwardV3 $ deg2Rad z
       rot' = xRot * yRot * zRot
       newRot = case relativeTo of
                  SpaceLocal -> rot' * rot
@@ -56,3 +67,14 @@ rotateLocal = rotate SpaceLocal
 
 rotateWorld :: Transform -> L.V3 Float -> Transform
 rotateWorld = rotate SpaceWorld
+
+-- | Rotate the direction vector from local to world space.
+transformDirection :: Transform -> L.V3 Float -> L.V3 Float
+transformDirection transform = L.normalize . L.rotate (transformRotation transform)
+
+-- | Return the forward vector of given transform in world space.
+transformForward :: Transform -> L.V3 Float
+transformForward = flip transformDirection forwardV3
+
+transformBack :: Transform -> L.V3 Float
+transformBack = flip transformDirection backV3
