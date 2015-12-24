@@ -6,6 +6,7 @@ module Main ( main ) where
 import Control.Exception (bracket)
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
+import Data.Int (Int32)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Foreign (nullPtr)
@@ -14,6 +15,7 @@ import System.IO (IOMode (..), hPrint, withFile)
 import Text.Printf (printf)
 
 import Graphics.GL.Core45
+import qualified Linear as L
 import qualified SDL
 
 import Hasgel.Display
@@ -21,13 +23,14 @@ import qualified Hasgel.FrameTimer as FT
 import Hasgel.Game (GameState (..), PlayerCmd (..), Ticcmd, addTiccmd,
                     buildTiccmd, gameState, ticGame)
 import Hasgel.GL
-import Hasgel.Input (InputEvent (..), KeyboardKey (..), getEvents)
+import Hasgel.Input
 import Hasgel.Mesh (Mesh (..), meshVertexIx)
 import Hasgel.Rendering
 import Hasgel.Resources
 import qualified Hasgel.SDL as MySDL
 import Hasgel.Simulation (HasSimulation (..), Milliseconds, Simulation (..),
                           Time (..), simulate, simulation)
+import Hasgel.Transform (rotateLocal, rotateWorld)
 
 instance HasSimulation World GameState where
   getSimulation = worldSimulation
@@ -98,6 +101,7 @@ data World = World
   , worldPlayerCmds :: Set PlayerCmd
   , worldDemoState :: DemoState
   , worldPaused :: Bool
+  , worldCamera :: Camera
   }
 
 data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
@@ -122,7 +126,8 @@ createWorld disp res gs demo = do
                  worldSimulation = simulation gs,
                  worldPlayerCmds = Set.empty,
                  worldDemoState = demo,
-                 worldPaused = False }
+                 worldPaused = False,
+                 worldCamera = defaultCamera }
 
 loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
 loop = do
@@ -141,12 +146,13 @@ loop = do
     renderDisplay disp . FT.withFrameTimer $ do
       clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
       clearDepthBuffer 1
-      renderPlayer
-      renderPlayerShots
-      renderInvaders
-      axisRenderer
-      glViewport 0 0 140 100
-      renderCameraOrientation
+      camera <- gets worldCamera
+      mapM_ ($ camera) [renderPlayer,
+                        renderPlayerShots,
+                        renderInvaders,
+                        axisRenderer]
+      glViewport 0 0 100 100
+      renderCameraOrientation camera
       glViewport 0 0 800 600
       throwError
     displayFrameRate
@@ -212,6 +218,8 @@ handleEvent (KeyReleasedEvent KeySpace) = modify $ deleteCmd Shoot
 handleEvent (KeyPressedEvent KeyP) = modify pausePressed
 handleEvent (KeyPressedEvent key) = liftIO $ printf "Pressed %s\n" (show key)
 handleEvent (KeyReleasedEvent key) = liftIO $ printf "Released %s\n" (show key)
+handleEvent (MouseMotionEvent motion mouseButtons) =
+  when (ButtonLeft `elem` mouseButtons) $ modify (rotateCamera motion)
 handleEvent _ = pure ()
 
 insertCmd :: PlayerCmd -> World -> World
@@ -226,3 +234,13 @@ modifyCmds f w = w { worldPlayerCmds = f (worldPlayerCmds w) }
 
 pausePressed :: World -> World
 pausePressed w = w { worldPaused = not $ worldPaused w }
+
+-- | Rotate the camera as in first person.
+rotateCamera :: L.V2 Int32 -> World -> World
+rotateCamera (L.V2 x y) world =
+  let camera = worldCamera world
+      -- | Horizontal rotation is locked to world vertical axis.
+      horRot = rotateWorld (cameraTransform camera) $ L.V3 0 (fromIntegral x) 0
+      -- | Vertical rotation is relative to local horizontal axis.
+      vertRot = rotateLocal horRot $ L.V3 (fromIntegral y) 0 0
+  in world { worldCamera = camera { cameraTransform = vertRot } }

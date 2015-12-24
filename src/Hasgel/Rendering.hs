@@ -1,14 +1,17 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Hasgel.Rendering (
+  Camera(..), defaultCamera,
   renderCameraOrientation, renderPlayer, renderPlayerShots, renderInvaders,
   axisRenderer
 ) where
 
 import Control.Monad (when)
+import Control.Arrow ((&&&))
 import System.Environment (getArgs)
 import Foreign (nullPtr)
 
+import Control.Lens ((.~))
 import Control.Monad.Base (MonadBase (..))
 import Control.Monad.State (MonadState(..), gets)
 import Control.Monad.Trans.Control (MonadBaseControl (..))
@@ -24,6 +27,11 @@ import qualified Hasgel.GL as GL
 import Hasgel.Mesh (Mesh, meshVertexCount)
 import Hasgel.Resources (HasResources(..), Resources(..))
 import qualified Hasgel.Resources as Res
+
+data Camera = Camera
+  { cameraTransform :: Transform
+  , cameraProjection :: L.M44 Float
+  } deriving (Show)
 
 mainProgramDesc :: Res.ProgramDesc
 mainProgramDesc = [("shaders/basic.vert", GL.VertexShader),
@@ -47,75 +55,85 @@ persp = L.perspective fovy ar n f
               f = 100
 
 ortho :: L.M44 Float
-ortho = L.ortho (-10) 10 (-10) 10 (-10) 10
+ortho = L.ortho (-2) 2 (-2) 2 (-2) 2
 
-cameraTransform :: Transform
-cameraTransform = defaultTransform { transformPosition = L.V3 0 (-10) (-21) }
+defaultCamera :: Camera
+defaultCamera = Camera {
+  cameraTransform = defaultTransform { transformPosition = L.V3 0 (-10) (-21) },
+  cameraProjection = persp }
 
-camera :: L.M44 Float
-camera = transform2M44 cameraTransform
+cameraView :: Camera -> L.M44 Float
+cameraView camera =
+  let transform = cameraTransform camera
+      trans = L.translation .~ transformPosition transform $ L.identity
+      rot = L.fromQuaternion $ transformRotation transform
+  in L.m33_to_m44 rot !*! trans -- Reversed order of transforms.
+
+cameraViewProjection :: Camera -> L.M44 Float
+cameraViewProjection = uncurry (!*!) . (cameraProjection &&& cameraView)
 
 renderPlayerShots :: (HasResources s, HasSimulation s GameState,
                       MonadBaseControl IO m, MonadState s m) =>
-                     m ()
-renderPlayerShots = do
+                     Camera -> m ()
+renderPlayerShots camera = do
   playerShots <- gets $ gPlayerShots . simState . getSimulation
-  mapM_ cubeRenderer playerShots
+  mapM_ (cubeRenderer camera) playerShots
 
 renderInvaders :: (HasResources s, HasSimulation s GameState,
                    MonadBaseControl IO m, MonadState s m) =>
-                  m ()
-renderInvaders = do
+                  Camera -> m ()
+renderInvaders camera = do
   invaders <- gets $ gInvaders . simState . getSimulation
-  mapM_ cubeRenderer invaders
+  mapM_ (cubeRenderer camera) invaders
 
 renderPlayer :: (HasResources s, HasSimulation s GameState,
                  MonadBaseControl IO m, MonadState s m) =>
-                m ()
-renderPlayer = cubeRenderer =<< gets getPlayerTransform
+                Camera -> m ()
+renderPlayer camera = cubeRenderer camera =<< gets getPlayerTransform
 
 cubeRenderer :: (HasResources s, HasSimulation s GameState,
                  MonadBaseControl IO m, MonadState s m) =>
-                Transform -> m ()
-cubeRenderer transform = do
+                Camera -> Transform -> m ()
+cubeRenderer camera transform = do
   mainProg <- Res.loadProgram mainProgramDesc
   normalsProg <- Res.loadProgram normalsProgramDesc
   res <- gets Res.getResources
-  let renderCube = renderMesh (resMesh res) transform
+  let renderCube = renderMesh camera (resMesh res) transform
   liftBase $ do
     renderCube mainProg
     args <- getArgs
     when ("-normals" `elem` args) $ renderCube normalsProg
 
-renderMesh :: Mesh -> Transform -> GL.Program -> IO ()
-renderMesh mesh transform prog = do
+renderMesh :: Camera -> Mesh -> Transform -> GL.Program -> IO ()
+renderMesh camera mesh transform prog = do
   GL.useProgram prog
-  uniformProjection prog
+  uniformProjection camera prog
   let vertexCount = meshVertexCount mesh
       model = transform2M44 transform
   setModelTransform prog model
   GL.drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
 
 renderCameraOrientation :: (HasResources s, MonadBaseControl IO m,
-                            MonadState s m) => m ()
-renderCameraOrientation = do
+                            MonadState s m) => Camera -> m ()
+renderCameraOrientation camera = do
   vao <- gets $ resVao . getResources
   cameraVao <- gets $ resCameraVao . getResources
-  let mvp = persp !*!
-            transform2M44 cameraTransform { transformPosition = L.V3 0 0 (-1) }
+  let rot = L.fromQuaternion . transformRotation $ cameraTransform camera
+      mvp = ortho !*! L.m33_to_m44 rot
   liftBase $ GL.bindVertexArray cameraVao
   liftBase $ GL.vertexAttrib3f (GL.Index 0) 0 0 0
-  renderAxis 0.5 mvp
+  renderAxis 1 mvp
   liftBase $ GL.bindVertexArray vao
 
 getPlayerTransform :: HasSimulation s GameState => s -> Transform
 getPlayerTransform = playerTransform . gPlayer . simState . getSimulation
 
-uniformProjection :: GL.Program -> IO ()
-uniformProjection prog = do
+uniformProjection :: Camera -> GL.Program -> IO ()
+uniformProjection camera prog = do
   mbLoc <- GL.getUniformLocation prog "proj"
+  let vp = cameraViewProjection camera
   case mbLoc of
-    Just loc -> GL.useProgram prog >> GL.uniform loc (persp !*! camera)
+    Just loc -> GL.useProgram prog >> GL.uniform loc vp
     _ -> pure ()
 
 setModelTransform :: GL.Program -> L.M44 Float -> IO ()
@@ -125,11 +143,11 @@ setModelTransform prog model = do
 
 axisRenderer :: (HasResources s, HasSimulation s GameState,
                  MonadBaseControl IO m, MonadState s m) =>
-                m ()
-axisRenderer = do
+                Camera -> m ()
+axisRenderer camera = do
   playerTrans <- gets getPlayerTransform
   let model = transform2M44 playerTrans
-      mvp = persp !*! camera !*! model
+      mvp = cameraViewProjection camera !*! model
   renderAxis 2 mvp
 
 renderAxis :: (HasResources s, MonadBaseControl IO m, MonadState s m) =>
