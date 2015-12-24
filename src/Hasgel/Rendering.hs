@@ -116,14 +116,9 @@ renderMesh camera mesh transform prog = do
 renderCameraOrientation :: (HasResources s, MonadBaseControl IO m,
                             MonadState s m) => Camera -> m ()
 renderCameraOrientation camera = do
-  vao <- gets $ resVao . getResources
-  cameraVao <- gets $ resCameraVao . getResources
   let rot = L.fromQuaternion . transformRotation $ cameraTransform camera
       mvp = ortho !*! L.m33_to_m44 rot
-  liftBase $ GL.bindVertexArray cameraVao
-  liftBase $ GL.vertexAttrib3f (GL.Index 0) 0 0 0
   renderAxis 1 mvp
-  liftBase $ GL.bindVertexArray vao
 
 getPlayerTransform :: HasSimulation s GameState => s -> Transform
 getPlayerTransform = playerTransform . gPlayer . simState . getSimulation
@@ -154,10 +149,15 @@ renderAxis :: (HasResources s, MonadBaseControl IO m, MonadState s m) =>
               Float -> L.M44 Float -> m ()
 renderAxis scale mvp = do
   axisProgram <- Res.loadProgram axisProgramDesc
+  vao <- gets $ resVao . getResources
+  axisVao <- gets $ resAxisVao . getResources
   liftBase $ do
+    GL.bindVertexArray axisVao
+    GL.vertexAttrib3f (GL.Index 0) 0 0 0
     GL.useProgram axisProgram
     Just scaleLoc <- GL.getUniformLocation axisProgram "scale"
     GL.uniform scaleLoc scale
     Just mvpLoc <- GL.getUniformLocation axisProgram "mvp"
     GL.uniform mvpLoc mvp
     glDrawArrays GL_POINTS 0 1
+    GL.bindVertexArray vao

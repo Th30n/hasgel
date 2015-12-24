@@ -4,7 +4,6 @@ layout (points) in;
 layout (line_strip) out;
 layout (max_vertices = 6) out;
 
-uniform mat4 rotation = mat4(1.0f);
 uniform mat4 mvp = mat4(1.0f);
 uniform float scale = 2.0f;
 

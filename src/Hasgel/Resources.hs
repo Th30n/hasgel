@@ -35,7 +35,7 @@ data Resources = Resources
   , resPrograms :: Programs
   , resMesh :: Mesh
   , resVao :: GL.VertexArray
-  , resCameraVao :: GL.VertexArray
+  , resAxisVao :: GL.VertexArray
   }
 
 data Programs = Programs
@@ -73,11 +73,11 @@ loadResources = do
     qs <- GL.gens 4
     eitherMesh <- loadHmd "share/models/player-ship.hmd"
     vao <- GL.gen
-    cameraVao <- GL.gen
+    axisVao <- GL.gen
     mesh <- case eitherMesh of
               Left err -> putStrLn err >> pure cube
               Right m -> pure m
-    pure $ Resources tex qs emptyPrograms mesh vao cameraVao
+    pure $ Resources tex qs emptyPrograms mesh vao axisVao
 
 loadTexture :: FilePath -> IO GL.Texture
 loadTexture file = do
@@ -98,7 +98,7 @@ freeResources res = do
   GL.delete $ texture res
   GL.deletes $ timeQueries res
   GL.delete $ resVao res
-  GL.delete $ resCameraVao res
+  GL.delete $ resAxisVao res
   void . freePrograms $ resPrograms res
 
 loadShader :: (HasPrograms s, MonadBaseControl IO m, MonadState s m) =>
