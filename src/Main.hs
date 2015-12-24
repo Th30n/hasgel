@@ -15,6 +15,7 @@ import System.IO (IOMode (..), hPrint, withFile)
 import Text.Printf (printf)
 
 import Graphics.GL.Core45
+import Linear ((*^))
 import qualified Linear as L
 import qualified SDL
 
@@ -29,8 +30,13 @@ import Hasgel.Rendering
 import Hasgel.Resources
 import qualified Hasgel.SDL as MySDL
 import Hasgel.Simulation (HasSimulation (..), Milliseconds, Simulation (..),
-                          Time (..), simulate, simulation)
-import Hasgel.Transform (rotateLocal, rotateWorld)
+                          Time (..), millis2Sec, simulate, simulation)
+import Hasgel.Transform (rotateLocal, rotateWorld, translate)
+
+data CameraMovement =
+  MoveForward
+  | MoveBack
+  deriving (Show, Eq)
 
 instance HasSimulation World GameState where
   getSimulation = worldSimulation
@@ -216,6 +222,8 @@ handleEvent (KeyReleasedEvent KeyRight) = modify $ deleteCmd MoveRight
 handleEvent (KeyPressedEvent KeySpace) = modify $ insertCmd Shoot
 handleEvent (KeyReleasedEvent KeySpace) = modify $ deleteCmd Shoot
 handleEvent (KeyPressedEvent KeyP) = modify pausePressed
+handleEvent (KeyPressedEvent KeyW) = modify $ moveCamera MoveForward
+handleEvent (KeyPressedEvent KeyS) = modify $ moveCamera MoveBack
 handleEvent (KeyPressedEvent key) = liftIO $ printf "Pressed %s\n" (show key)
 handleEvent (KeyReleasedEvent key) = liftIO $ printf "Released %s\n" (show key)
 handleEvent (MouseMotionEvent motion mouseButtons) =
@@ -235,12 +243,28 @@ modifyCmds f w = w { worldPlayerCmds = f (worldPlayerCmds w) }
 pausePressed :: World -> World
 pausePressed w = w { worldPaused = not $ worldPaused w }
 
+moveCamera :: CameraMovement -> World -> World
+moveCamera dir world =
+  let camera = worldCamera world
+      viewDir = case dir of
+                  MoveForward -> viewForward
+                  MoveBack -> viewBack
+      moveSpeed = 20
+      dt = millis2Sec . timeDelta $ worldTime world
+      transform = cameraTransform camera
+      velocity = moveSpeed * dt * viewDir camera
+      transform' = translate transform velocity
+  in world { worldCamera = camera { cameraTransform = transform' } }
+
 -- | Rotate the camera as in first person.
 rotateCamera :: L.V2 Int32 -> World -> World
-rotateCamera (L.V2 x y) world =
-  let camera = worldCamera world
+rotateCamera motion world =
+  let sens = -10
+      dt = millis2Sec . timeDelta $ worldTime world
+      L.V2 x y = sens * dt *^ fmap fromIntegral motion
+      camera = worldCamera world
       -- | Horizontal rotation is locked to world vertical axis.
-      horRot = rotateWorld (cameraTransform camera) $ L.V3 0 (fromIntegral x) 0
+      horRot = rotateWorld (cameraTransform camera) $ L.V3 0 x 0
       -- | Vertical rotation is relative to local horizontal axis.
-      vertRot = rotateLocal horRot $ L.V3 (fromIntegral y) 0 0
+      vertRot = rotateLocal horRot $ L.V3 y 0 0
   in world { worldCamera = camera { cameraTransform = vertRot } }

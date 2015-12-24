@@ -34,6 +34,8 @@ data KeyboardKey =
   | KeySpace
   | KeyLeftBracket
   | KeyP
+  | KeyW
+  | KeyS
   | KeyUnknown
   deriving (Eq, Show)
 
@@ -59,4 +61,6 @@ mapSDLKey (SDL.Keysym SDL.ScancodeDown _ _) = KeyDown
 mapSDLKey (SDL.Keysym SDL.ScancodeSpace _ _) = KeySpace
 mapSDLKey (SDL.Keysym SDL.ScancodeLeftBracket _ _) = KeyLeftBracket
 mapSDLKey (SDL.Keysym SDL.ScancodeP _ _) = KeyP
+mapSDLKey (SDL.Keysym SDL.ScancodeW _ _) = KeyW
+mapSDLKey (SDL.Keysym SDL.ScancodeS _ _) = KeyS
 mapSDLKey _ = KeyUnknown
