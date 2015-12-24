@@ -7,7 +7,7 @@ uniform mat4 proj = mat4(1.0);
 uniform mat4 model = mat4(1.0);
 
 uniform vec4 normal_color = vec4(0.0, 1.0, 0.0, 1.0);
-uniform float normal_length = 1.0;
+uniform float normal_length = 0.1;
 uniform bool draw_face_normal = false;
 
 in VS_OUT
@@ -36,7 +36,7 @@ void emit_face_normal(void)
     gl_Position = mvp * vec4(tri_centroid, 1.0);
     color = normal_color;
     EmitVertex();
-    
+
     vec3 end = normal_end(tri_centroid, face_normal);
     gl_Position = mvp * vec4(end, 1.0);
     color = normal_color;
