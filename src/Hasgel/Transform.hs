@@ -57,8 +57,8 @@ rotate relativeTo transform (L.V3 x y z) =
       zRot = L.axisAngle forwardV3 $ deg2Rad z
       rot' = xRot * yRot * zRot
       newRot = case relativeTo of
-                 SpaceLocal -> rot' * rot
-                 SpaceWorld -> rot * rot'
+                 SpaceLocal -> rot * rot'
+                 SpaceWorld -> rot' * rot
   in transform { transformRotation = newRot }
 
 -- | Rotate in local coordinate system.
