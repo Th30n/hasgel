@@ -42,6 +42,31 @@ data CameraMovement =
   | MoveUp
   deriving (Show, Eq)
 
+data Loop = Continue | Quit deriving (Eq, Show)
+
+data World = World
+  { worldLoopState :: Loop
+  , worldDisplay :: Display
+  , worldTime :: Time
+  , worldResources :: Resources
+  , worldFrameTimer :: FT.FrameTimer
+  , worldSimulation :: Simulation GameState
+  , worldPlayerCmds :: Set PlayerCmd
+  , worldDemoState :: DemoState
+  , worldPaused :: Bool
+  , worldCamera :: Camera
+  }
+
+data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
+
+instance HasResources World where
+  getResources = worldResources
+  setResources w res = w { worldResources = res }
+
+instance FT.HasFrameTimer World where
+  getFrameTimer = worldFrameTimer
+  setFrameTimer w ft = w { worldFrameTimer = ft }
+
 instance HasSimulation World GameState where
   getSimulation = worldSimulation
   setSimulation w sim = w { worldSimulation = sim }
@@ -98,31 +123,6 @@ main =
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
-
-data Loop = Continue | Quit deriving (Eq, Show)
-
-data World = World
-  { worldLoopState :: Loop
-  , worldDisplay :: Display
-  , worldTime :: Time
-  , worldResources :: Resources
-  , worldFrameTimer :: FT.FrameTimer
-  , worldSimulation :: Simulation GameState
-  , worldPlayerCmds :: Set PlayerCmd
-  , worldDemoState :: DemoState
-  , worldPaused :: Bool
-  , worldCamera :: Camera
-  }
-
-data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
-
-instance HasResources World where
-  getResources = worldResources
-  setResources w res = w { worldResources = res }
-
-instance FT.HasFrameTimer World where
-  getFrameTimer = worldFrameTimer
-  setFrameTimer w ft = w { worldFrameTimer = ft }
 
 createWorld :: Display -> Resources -> GameState -> DemoState -> IO World
 createWorld disp res gs demo = do
