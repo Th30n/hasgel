@@ -36,6 +36,10 @@ import Hasgel.Transform (rotateLocal, rotateWorld, translate)
 data CameraMovement =
   MoveForward
   | MoveBack
+  | MoveLeft
+  | MoveRight
+  | MoveDown
+  | MoveUp
   deriving (Show, Eq)
 
 instance HasSimulation World GameState where
@@ -215,15 +219,19 @@ updateTime = do
 
 handleEvent :: (MonadIO m, MonadState World m) => InputEvent -> m ()
 handleEvent QuitEvent = modify $ \w -> w { worldLoopState = Quit }
-handleEvent (KeyPressedEvent KeyLeft) = modify $ insertCmd MoveLeft
-handleEvent (KeyReleasedEvent KeyLeft) = modify $ deleteCmd MoveLeft
-handleEvent (KeyPressedEvent KeyRight) = modify $ insertCmd MoveRight
-handleEvent (KeyReleasedEvent KeyRight) = modify $ deleteCmd MoveRight
+handleEvent (KeyPressedEvent KeyLeft) = modify $ insertCmd Hasgel.Game.MoveLeft
+handleEvent (KeyReleasedEvent KeyLeft) = modify $ deleteCmd Hasgel.Game.MoveLeft
+handleEvent (KeyPressedEvent KeyRight) = modify $ insertCmd Hasgel.Game.MoveRight
+handleEvent (KeyReleasedEvent KeyRight) = modify $ deleteCmd Hasgel.Game.MoveRight
 handleEvent (KeyPressedEvent KeySpace) = modify $ insertCmd Shoot
 handleEvent (KeyReleasedEvent KeySpace) = modify $ deleteCmd Shoot
 handleEvent (KeyPressedEvent KeyP) = modify pausePressed
 handleEvent (KeyPressedEvent KeyW) = modify $ moveCamera MoveForward
 handleEvent (KeyPressedEvent KeyS) = modify $ moveCamera MoveBack
+handleEvent (KeyPressedEvent KeyA) = modify $ moveCamera Main.MoveLeft
+handleEvent (KeyPressedEvent KeyD) = modify $ moveCamera Main.MoveRight
+handleEvent (KeyPressedEvent KeyQ) = modify $ moveCamera MoveDown
+handleEvent (KeyPressedEvent KeyE) = modify $ moveCamera MoveUp
 handleEvent (KeyPressedEvent key) = liftIO $ printf "Pressed %s\n" (show key)
 handleEvent (KeyReleasedEvent key) = liftIO $ printf "Released %s\n" (show key)
 handleEvent (MouseMotionEvent motion mouseButtons) =
@@ -243,12 +251,17 @@ modifyCmds f w = w { worldPlayerCmds = f (worldPlayerCmds w) }
 pausePressed :: World -> World
 pausePressed w = w { worldPaused = not $ worldPaused w }
 
+-- | Move the camera as in first person.
 moveCamera :: CameraMovement -> World -> World
 moveCamera dir world =
   let camera = worldCamera world
       viewDir = case dir of
                   MoveForward -> viewForward
                   MoveBack -> viewBack
+                  Main.MoveLeft -> viewLeft
+                  Main.MoveRight -> viewRight
+                  MoveDown -> viewDown
+                  MoveUp -> viewUp
       moveSpeed = 20
       dt = millis2Sec . timeDelta $ worldTime world
       transform = cameraTransform camera

@@ -1,6 +1,7 @@
 module Hasgel.Transform (
   Transform(..), Space(..), defaultTransform, deg2Rad,
   transform2M44, transformRotationM44, transformForward, transformBack,
+  transformRight, transformLeft, transformUp, transformDown,
   translate, rotate, rotateLocal, rotateWorld
 ) where
 
@@ -25,8 +26,14 @@ backV3 = -forwardV3
 rightV3 :: L.V3 Float
 rightV3 = L.V3 1 0 0
 
+leftV3 :: L.V3 Float
+leftV3 = -rightV3
+
 upV3 :: L.V3 Float
 upV3 = L.V3 0 1 0
+
+downV3 :: L.V3 Float
+downV3 = -upV3
 
 deg2Rad :: Floating a => a -> a
 deg2Rad = ((pi / 180) *)
@@ -78,3 +85,15 @@ transformForward = flip transformDirection forwardV3
 
 transformBack :: Transform -> L.V3 Float
 transformBack = flip transformDirection backV3
+
+transformRight :: Transform -> L.V3 Float
+transformRight = flip transformDirection rightV3
+
+transformLeft :: Transform -> L.V3 Float
+transformLeft = flip transformDirection leftV3
+
+transformUp :: Transform -> L.V3 Float
+transformUp = flip transformDirection upV3
+
+transformDown :: Transform -> L.V3 Float
+transformDown = flip transformDirection downV3

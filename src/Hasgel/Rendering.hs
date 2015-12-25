@@ -1,7 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Hasgel.Rendering (
-  Camera(..), defaultCamera, viewForward, viewBack,
+  Camera(..), defaultCamera, viewForward, viewBack, viewRight, viewLeft,
+  viewUp, viewDown,
   renderCameraOrientation, renderPlayer, renderPlayerShots, renderInvaders,
   axisRenderer
 ) where
@@ -21,8 +22,7 @@ import qualified Linear as L
 
 import Hasgel.Simulation (Simulation(..), HasSimulation(..))
 import Hasgel.Game (GameState(..), Player(..))
-import Hasgel.Transform (Transform(..), transform2M44, transformForward,
-                         transformBack, deg2Rad, defaultTransform)
+import Hasgel.Transform
 import qualified Hasgel.GL as GL
 import Hasgel.Mesh (Mesh, meshVertexCount)
 import Hasgel.Resources (HasResources(..), Resources(..))
@@ -75,6 +75,18 @@ viewForward = transformBack . cameraTransform
 -- This is the forward vector of the camera orientation.
 viewBack :: Camera -> L.V3 Float
 viewBack = transformForward . cameraTransform
+
+viewLeft :: Camera -> L.V3 Float
+viewLeft = transformLeft . cameraTransform
+
+viewRight :: Camera -> L.V3 Float
+viewRight = transformRight . cameraTransform
+
+viewDown :: Camera -> L.V3 Float
+viewDown = transformDown . cameraTransform
+
+viewUp :: Camera -> L.V3 Float
+viewUp = transformUp . cameraTransform
 
 -- | Return the view matrix for the given camera.
 cameraView :: Camera -> L.M44 Float
