@@ -1,5 +1,5 @@
 module Hasgel.GL.Program (
-  Program, useProgram, linkProgram
+  Program, UsedProgram, useProgram, getUsedProgram, linkProgram
 ) where
 
 import Control.Exception (throwIO)
@@ -22,6 +22,34 @@ instance Object Program where
 
 instance Gen Program where
   gen = createProgram
+
+-- | XXX: Duplicated from BoundBuffer
+newtype UsedProgram a = UsedProgram { withUsedProgram :: Program -> IO a }
+
+instance Functor UsedProgram where
+  fmap f (UsedProgram b) = UsedProgram $ fmap f . b
+
+instance Applicative UsedProgram where
+  pure a = UsedProgram $ \_ -> pure a
+
+  (UsedProgram f) <*> (UsedProgram a) =
+    UsedProgram $ \program -> f program <*> a program
+
+instance Monad UsedProgram where
+  (UsedProgram a) >>= f = UsedProgram $ \program -> do
+    a' <- a program
+    withUsedProgram (f a') program
+
+instance MonadIO UsedProgram where
+  liftIO action = UsedProgram $ const action
+
+useProgram :: MonadIO m => Program -> UsedProgram a -> m a
+useProgram program actions = do
+  glUseProgram $ object program
+  liftIO $ withUsedProgram actions program
+
+getUsedProgram :: UsedProgram Program
+getUsedProgram = UsedProgram pure
 
 createProgram :: MonadIO m => m Program
 createProgram = do
@@ -61,6 +89,3 @@ getProgramiv (Program program) pname =
   liftIO . alloca $ \params -> do
     glGetProgramiv program pname params
     peek params
-
-useProgram :: MonadIO m => Program -> m ()
-useProgram (Program program) = glUseProgram program

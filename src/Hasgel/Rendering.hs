@@ -135,9 +135,8 @@ cubeRenderer camera transform = do
 
 renderMesh :: Camera -> Mesh -> Transform -> GL.Program -> IO ()
 renderMesh camera mesh transform prog = do
-  GL.useProgram prog
   let mvp = cameraViewProjection camera !*! transform2M44 transform
-  uniformMvp prog mvp
+  GL.useProgram prog $ GL.uniformByName "mvp" mvp
   let vertexCount = meshVertexCount mesh
   GL.drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
 
@@ -169,14 +168,8 @@ renderAxis scale mvp = do
   liftBase $ do
     GL.bindVertexArray axisVao
     GL.vertexAttrib3f (GL.Index 0) 0 0 0
-    GL.useProgram axisProgram
-    Just scaleLoc <- GL.getUniformLocation axisProgram "scale"
-    GL.uniform scaleLoc scale
-    uniformMvp axisProgram mvp
+    GL.useProgram axisProgram $ do
+      GL.uniformByName "scale" scale
+      GL.uniformByName "mvp" mvp
     glDrawArrays GL_POINTS 0 1
     GL.bindVertexArray vao
-
-uniformMvp :: GL.Program -> L.M44 Float -> IO ()
-uniformMvp program mvp = do
-  Just mvpLoc <- GL.getUniformLocation program "mvp"
-  GL.uniform mvpLoc mvp

@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 module Hasgel.GL.Uniform (
-  UniformData(..), getUniformLocation
+  UniformData(..), uniformByName, getUniformLocation
 ) where
 
 import Control.Monad.IO.Class (MonadIO (..))
@@ -18,8 +18,8 @@ newtype UniformLocation = UniformLocation { unwrapLocation :: GLint }
 
 class UniformData a where
   {-# MINIMAL uniformv #-}
-  uniformv :: (UniformData a, MonadIO m) => UniformLocation -> [a] -> m ()
-  uniform :: (UniformData a, MonadIO m) => UniformLocation -> a -> m ()
+  uniformv :: UniformData a => UniformLocation -> [a] -> UsedProgram ()
+  uniform :: UniformData a => UniformLocation -> a -> UsedProgram ()
   uniform loc x = uniformv loc [x]
 
 instance UniformData (L.M44 Float) where
@@ -30,8 +30,14 @@ instance UniformData Float where
   uniformv loc fs = liftIO . withArrayLen fs $ \n ->
     glUniform1fv (unwrapLocation loc) (fromIntegral n) . castPtr
 
-getUniformLocation :: MonadIO m => Program -> String -> m (Maybe UniformLocation)
-getUniformLocation program name =
+uniformByName :: UniformData a => String -> a -> UsedProgram ()
+uniformByName name v = do
+  Just loc <- getUniformLocation name
+  uniform loc v
+
+getUniformLocation :: String -> UsedProgram (Maybe UniformLocation)
+getUniformLocation name = do
+  program <- getUsedProgram
   liftIO . withCAString name $ \ptr -> do
     loc <- glGetUniformLocation (object program) ptr
     pure $ if loc == -1 then Nothing else Just $ UniformLocation loc
