@@ -3,8 +3,7 @@
 layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 normal;
 
-uniform mat4 proj = mat4(1.0);
-uniform mat4 model = mat4(1.0);
+uniform mat4 mvp = mat4(1.0);
 
 out VS_OUT
 {
@@ -15,7 +14,7 @@ out VS_OUT
 
 void main(void)
 {
-    gl_Position = proj * model * vec4(position, 1.0);
+    gl_Position = mvp * vec4(position, 1.0);
     vs_out.tc = position.xy - 1E-5;
     vs_out.position = position;
     vs_out.normal = normal;

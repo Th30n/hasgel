@@ -136,10 +136,9 @@ cubeRenderer camera transform = do
 renderMesh :: Camera -> Mesh -> Transform -> GL.Program -> IO ()
 renderMesh camera mesh transform prog = do
   GL.useProgram prog
-  uniformProjection camera prog
+  let mvp = cameraViewProjection camera !*! transform2M44 transform
+  uniformMvp prog mvp
   let vertexCount = meshVertexCount mesh
-      model = transform2M44 transform
-  setModelTransform prog model
   GL.drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
 
 renderCameraOrientation :: (HasResources s, MonadBaseControl IO m,
@@ -151,19 +150,6 @@ renderCameraOrientation camera = do
 
 getPlayerTransform :: HasSimulation s GameState => s -> Transform
 getPlayerTransform = playerTransform . gPlayer . simState . getSimulation
-
-uniformProjection :: Camera -> GL.Program -> IO ()
-uniformProjection camera prog = do
-  mbLoc <- GL.getUniformLocation prog "proj"
-  let vp = cameraViewProjection camera
-  case mbLoc of
-    Just loc -> GL.useProgram prog >> GL.uniform loc vp
-    _ -> pure ()
-
-setModelTransform :: GL.Program -> L.M44 Float -> IO ()
-setModelTransform prog model = do
-  Just loc <- GL.getUniformLocation prog "model"
-  GL.useProgram prog >> GL.uniform loc model
 
 axisRenderer :: (HasResources s, HasSimulation s GameState,
                  MonadBaseControl IO m, MonadState s m) =>
@@ -186,7 +172,11 @@ renderAxis scale mvp = do
     GL.useProgram axisProgram
     Just scaleLoc <- GL.getUniformLocation axisProgram "scale"
     GL.uniform scaleLoc scale
-    Just mvpLoc <- GL.getUniformLocation axisProgram "mvp"
-    GL.uniform mvpLoc mvp
+    uniformMvp axisProgram mvp
     glDrawArrays GL_POINTS 0 1
     GL.bindVertexArray vao
+
+uniformMvp :: GL.Program -> L.M44 Float -> IO ()
+uniformMvp program mvp = do
+  Just mvpLoc <- GL.getUniformLocation program "mvp"
+  GL.uniform mvpLoc mvp
