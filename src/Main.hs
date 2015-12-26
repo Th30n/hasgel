@@ -98,6 +98,7 @@ parseArgs _ = NoDemo
 main :: IO ()
 main =
   MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
+    printGLInfo
     glViewport 0 0 800 600
     glActiveTexture GL_TEXTURE0
     withResources $ \res -> do
@@ -123,6 +124,13 @@ main =
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
+
+printGLInfo :: IO ()
+printGLInfo = do
+    printf "GL Vendor: %s\n" =<< getParam Vendor
+    printf "GL Renderer: %s\n" =<< getParam Renderer
+    printf "GL Version: %s\n" =<< getParam Version
+    printf "GLSL Version: %s\n" =<< getParam ShadingLanguageVersion
 
 createWorld :: Display -> Resources -> GameState -> DemoState -> IO World
 createWorld disp res gs demo = do

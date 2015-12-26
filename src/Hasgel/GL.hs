@@ -21,6 +21,7 @@ import Graphics.GL.Types
 
 import Hasgel.GL.Buffer as GL
 import Hasgel.GL.Object as GL
+import Hasgel.GL.Param as GL
 import Hasgel.GL.Program as GL
 import Hasgel.GL.Shader as GL
 import Hasgel.GL.Uniform as GL
