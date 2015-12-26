@@ -12,7 +12,7 @@ import Control.Arrow ((&&&))
 import System.Environment (getArgs)
 import Foreign (nullPtr)
 
-import Control.Lens ((.~))
+import Control.Lens ((.~), (^.))
 import Control.Monad.Base (MonadBase (..))
 import Control.Monad.State (MonadState(..), gets)
 import Control.Monad.Trans.Control (MonadBaseControl (..))
@@ -36,6 +36,10 @@ data Camera = Camera
 mainProgramDesc :: Res.ProgramDesc
 mainProgramDesc = [("shaders/basic.vert", GL.VertexShader),
                    ("shaders/basic.frag", GL.FragmentShader)]
+
+gouraudProgramDesc :: Res.ProgramDesc
+gouraudProgramDesc = [("shaders/gouraud.vert", GL.VertexShader),
+                      ("shaders/color.frag", GL.FragmentShader)]
 
 normalsProgramDesc :: Res.ProgramDesc
 normalsProgramDesc = [("shaders/basic.vert", GL.VertexShader),
@@ -124,7 +128,7 @@ cubeRenderer :: (HasResources s, HasSimulation s GameState,
                  MonadBaseControl IO m, MonadState s m) =>
                 Camera -> Transform -> m ()
 cubeRenderer camera transform = do
-  mainProg <- Res.loadProgram mainProgramDesc
+  mainProg <- Res.loadProgram gouraudProgramDesc
   normalsProg <- Res.loadProgram normalsProgramDesc
   res <- gets Res.getResources
   let renderCube = renderMesh camera (resMesh res) transform
@@ -136,7 +140,11 @@ cubeRenderer camera transform = do
 renderMesh :: Camera -> Mesh -> Transform -> GL.Program -> IO ()
 renderMesh camera mesh transform prog = do
   let mvp = cameraViewProjection camera !*! transform2M44 transform
-  GL.useProgram prog $ GL.uniformByName "mvp" mvp
+      -- Normal transform assumes uniform scaling.
+      normalModel = transform2M44 transform ^. L._m33
+  GL.useProgram prog $ do
+    GL.uniformByName "mvp" mvp
+    GL.uniformByName "normal_model" normalModel
   let vertexCount = meshVertexCount mesh
   GL.drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
 

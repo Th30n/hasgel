@@ -100,6 +100,7 @@ main =
   MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
     printGLInfo
     glViewport 0 0 800 600
+    glEnable GL_CULL_FACE
     glActiveTexture GL_TEXTURE0
     withResources $ \res -> do
       bindVertexArray $ resVao res

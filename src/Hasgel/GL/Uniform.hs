@@ -26,6 +26,10 @@ instance UniformData (L.M44 Float) where
   uniformv loc ms = liftIO . withArrayLen ms $ \n ->
     glUniformMatrix4fv (unwrapLocation loc) (fromIntegral n) GL_TRUE . castPtr
 
+instance UniformData (L.M33 Float) where
+  uniformv loc ms = liftIO . withArrayLen ms $ \n ->
+    glUniformMatrix3fv (unwrapLocation loc) (fromIntegral n) GL_TRUE . castPtr
+
 instance UniformData Float where
   uniformv loc fs = liftIO . withArrayLen fs $ \n ->
     glUniform1fv (unwrapLocation loc) (fromIntegral n) . castPtr
