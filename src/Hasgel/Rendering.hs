@@ -52,11 +52,15 @@ axisProgramDesc = [("shaders/axis.vert", GL.VertexShader),
                    ("shaders/color.frag", GL.FragmentShader)]
 
 persp :: L.M44 Float
-persp = L.perspective fovy ar n f
+persp = persp''
         where fovy = deg2Rad 60
               ar = 800 / 600
               n = 0.1
               f = 100
+              -- Workaround for left out multiplication by 2
+              persp' = L.perspective fovy ar n f
+              w = persp' ^. L._z.L._w
+              persp'' = L._z.L._w .~ (2*w) $ persp'
 
 ortho :: L.M44 Float
 ortho = L.ortho (-2) 2 (-2) 2 (-2) 2
