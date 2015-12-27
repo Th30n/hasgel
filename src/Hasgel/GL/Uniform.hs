@@ -10,6 +10,7 @@ import Foreign.C (withCAString)
 import Graphics.GL.Core45
 import Graphics.GL.Types
 import qualified Linear as L
+import Text.Printf (printf)
 
 import Hasgel.GL.Object
 import Hasgel.GL.Program
@@ -36,8 +37,10 @@ instance UniformData Float where
 
 uniformByName :: UniformData a => String -> a -> UsedProgram ()
 uniformByName name v = do
-  Just loc <- getUniformLocation name
-  uniform loc v
+  mbLoc <- getUniformLocation name
+  case mbLoc of
+    Just loc -> uniform loc v
+    Nothing -> liftIO $ printf "Missing uniform '%s'\n" name
 
 getUniformLocation :: String -> UsedProgram (Maybe UniformLocation)
 getUniformLocation name = do
