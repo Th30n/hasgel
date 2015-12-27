@@ -91,9 +91,10 @@ rearrangeMesh :: [FaceDesc] -> [L.V3 Float] -> [L.V3 Float]  -> Mesh
 rearrangeMesh faces vertices normals =
   let no = normalOrder faces
       len = length vertices - 1
+      normLen = length normals - 1
       arrayVertices = A.listArray (0, len) vertices
       vs = reorderVertices arrayVertices $ map fst no
-      arrayNormals = A.listArray (0, len) normals
+      arrayNormals = A.listArray (0, normLen) normals
       norms = reorderVertices arrayNormals $ map snd no
       ixsMap = M.fromList $ zip no [0..]
       fs = flip reorderFaceIxs ixsMap <$> faces
