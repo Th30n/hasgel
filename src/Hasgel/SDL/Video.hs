@@ -6,7 +6,7 @@ module Hasgel.SDL.Video (
   GLContext, GLContextFlag(..), GLContextProfile(..), Surface,
   -- * Functions
   createWindow, destroyWindow, glCreateContext, glDeleteContext,
-  glSetContextVersion, glSetContextFlags, glSetContextProfile,
+  glSetMultisample, glSetContextVersion, glSetContextFlags, glSetContextProfile,
   glSwapWindow, loadBMP, freeSurface, surfaceW, surfaceH, surfacePixels,
   convertSurfaceFormat, setWindowTitle
 ) where
@@ -160,10 +160,8 @@ glDeleteContext = SDL.glDeleteContext
 -- | Throws 'GLError' on failure.
 glSetContextVersion :: MonadIO m => CInt -> CInt -> m ()
 glSetContextVersion major minor = do
-  r <- SDL.glSetAttribute SDL.SDL_GL_CONTEXT_MAJOR_VERSION major
-  throwIf (r /= 0) GLError
-  r' <- SDL.glSetAttribute SDL.SDL_GL_CONTEXT_MINOR_VERSION minor
-  throwIf (r' /= 0) GLError
+  glSetAttribute SDL.SDL_GL_CONTEXT_MAJOR_VERSION major
+  glSetAttribute SDL.SDL_GL_CONTEXT_MINOR_VERSION minor
 
 -- | OpenGL profiles.
 data GLContextProfile =
@@ -183,8 +181,7 @@ glSetContextProfile prof = do
                 GLCore -> SDL.SDL_GL_CONTEXT_PROFILE_CORE
                 GLCompatibility -> SDL.SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
                 GLES -> SDL.SDL_GL_CONTEXT_PROFILE_ES
-  r <- SDL.glSetAttribute SDL.SDL_GL_CONTEXT_PROFILE_MASK prof'
-  throwIf (r /= 0) GLError
+  glSetAttribute SDL.SDL_GL_CONTEXT_PROFILE_MASK prof'
 
 -- | OpenGL context flags.
 data GLContextFlag =
@@ -214,12 +211,21 @@ instance BitFlag GLContextFlag where
   unmarshalBitFlag =
     error "TODO: Hasgel.SDL.Video.GLContextFlag => unmarshalBitFlag"
 
+glSetAttribute :: MonadIO m => SDL.GLattr -> CInt -> m ()
+glSetAttribute attr value = do
+  r <- SDL.glSetAttribute attr value
+  throwIf (r /= 0) GLError
+
 -- | Sets OpenGL context flags. Throws 'GLError' on failure.
 glSetContextFlags :: MonadIO m => [GLContextFlag] -> m ()
-glSetContextFlags flags = do
-  let flags' = createBitFlags flags
-  r <- SDL.glSetAttribute SDL.SDL_GL_CONTEXT_FLAGS flags'
-  throwIf (r /= 0) GLError
+glSetContextFlags flags =
+  glSetAttribute SDL.SDL_GL_CONTEXT_FLAGS $ createBitFlags flags
+
+-- | Sets OpenGL MSAA for the context framebuffer.
+glSetMultisample :: MonadIO m => CInt -> m ()
+glSetMultisample samples = do
+  glSetAttribute SDL.SDL_GL_MULTISAMPLEBUFFERS 1
+  glSetAttribute SDL.SDL_GL_MULTISAMPLESAMPLES samples
 
 -- | This function is used for updating a window with OpenGL rendering.
 glSwapWindow :: MonadIO m => Window -> m ()
