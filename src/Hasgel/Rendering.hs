@@ -39,7 +39,7 @@ mainProgramDesc = [("shaders/basic.vert", GL.VertexShader),
 
 gouraudProgramDesc :: Res.ProgramDesc
 gouraudProgramDesc = [("shaders/gouraud.vert", GL.VertexShader),
-                      ("shaders/color.frag", GL.FragmentShader)]
+                      ("shaders/gouraud.frag", GL.FragmentShader)]
 
 normalsProgramDesc :: Res.ProgramDesc
 normalsProgramDesc = [("shaders/basic.vert", GL.VertexShader),

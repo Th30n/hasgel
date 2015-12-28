@@ -69,7 +69,7 @@ withResources = bracket loadResources freeResources
 
 loadResources :: IO Resources
 loadResources = do
-    tex <- loadTexture "share/gfx/checker.bmp"
+    tex <- loadTexture "share/models/player-ship-diffuse.bmp"
     qs <- GL.gens 4
     eitherMesh <- loadHmd "share/models/player-ship.hmd"
     vao <- GL.gen

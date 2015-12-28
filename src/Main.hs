@@ -112,6 +112,10 @@ main =
       bindBuffer ArrayBuffer normalBuf $
         bufferData (meshNormals (resMesh res)) StaticDraw
       vertexAttribPointer 1 3 GL_FLOAT GL_FALSE 0 nullPtr
+      uvsBuf <- gen
+      bindBuffer ArrayBuffer uvsBuf $
+        bufferData (meshUvs (resMesh res)) StaticDraw
+      vertexAttribPointer 2 2 GL_FLOAT GL_FALSE 0 nullPtr
       indexBuf <- genIndexBuffer $ resMesh res
       glEnable GL_DEPTH_TEST
       args <- getArgs
@@ -121,6 +125,8 @@ main =
                    _ -> return []
       void . execStateT loop =<< createWorld d res (gameState ticcmds) demo
       delete indexBuf
+      delete uvsBuf
+      delete normalBuf
       delete buf
 
 withDisplay :: (Display -> IO a) -> IO a

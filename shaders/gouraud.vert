@@ -2,6 +2,7 @@
 
 layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 normal;
+layout (location = 2) in vec2 uv;
 
 uniform mat4 mvp = mat4(1.0f);
 uniform mat3 normal_model = mat3(1.0f);
@@ -13,7 +14,11 @@ uniform vec3 light_direction = vec3(1.0f, 0.0f, 0.5f);
 // Material
 uniform vec3 diff_color = vec3(1.0f);
 
-out vec4 color;
+out VS_OUT
+{
+    vec2 uv;
+    vec4 color;
+} vs_out;
 
 void main()
 {
@@ -21,5 +26,6 @@ void main()
     // Lighting in world space.
     vec3 n = normalize(normal_model * normal);
     float ndotl = max(0.0f, dot(n, light_direction));
-    color = vec4(diff_color * light_color * ndotl, 1.0);
+    vs_out.uv = uv;
+    vs_out.color = vec4(diff_color * light_color * ndotl, 1.0);
 }

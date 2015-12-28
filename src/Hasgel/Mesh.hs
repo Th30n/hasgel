@@ -24,7 +24,7 @@ import qualified Hasgel.Mesh.OBJ as OBJ
 data Mesh = Mesh
   { meshVertices :: [L.V3 Float]
   , meshNormals :: [L.V3 Float]
-  , meshUvs :: Maybe [L.V2 Float]
+  , meshUvs :: [L.V2 Float]
   , meshFaces :: [Face]
   } deriving (Show)
 
@@ -43,7 +43,7 @@ instance Binary Mesh where
       then fail "Invalid file format"
       else Mesh <$> get <*> get <*> get <*> get
 
-data Face = Face { faceVertexIx :: [Word16] } deriving (Show)
+newtype Face = Face { faceVertexIx :: [Word16] } deriving (Show)
 
 instance Binary Face where
   put (Face ixs) = put ixs
@@ -79,29 +79,32 @@ loadHmd fp = do
            Right m -> Right m
 
 obj2Mesh :: OBJ -> Mesh
-obj2Mesh (OBJ verts normals _ faces) =
-  rearrangeMesh (convertFace <$> faces) verts normals
+obj2Mesh (OBJ verts normals uvs faces) =
+  rearrangeMesh (convertFace <$> faces) verts normals uvs
   where convertFace ((av, avt, avn), (bv, bvt, bvn), (cv, cvt, cvn)) =
           FaceDesc ([av, bv, cv], sequence [avt, bvt, cvt],
                     sequence [avn, bvn, cvn])
 
 -- | Reorder vertices and normals and adjust face vertex indices so that they
 -- can be indexed in OpenGL.
-rearrangeMesh :: [FaceDesc] -> [L.V3 Float] -> [L.V3 Float]  -> Mesh
-rearrangeMesh faces vertices normals =
+rearrangeMesh :: [FaceDesc] -> [L.V3 Float] -> [L.V3 Float]  ->
+                 [L.V2 Float] -> Mesh
+rearrangeMesh faces vertices normals uvs =
   let no = normalOrder faces
       len = length vertices - 1
       normLen = length normals - 1
       arrayVertices = A.listArray (0, len) vertices
-      vs = reorderVertices arrayVertices $ map fst no
+      vs = reorderVertices arrayVertices $ map (\(v,_,_) -> v) no
       arrayNormals = A.listArray (0, normLen) normals
-      norms = reorderVertices arrayNormals $ map snd no
-      ixsMap = M.fromList $ zip no [0..]
+      norms = reorderVertices arrayNormals $ map (\(_,n,_) -> n) no
+      arrayUvs = A.listArray (0, len) uvs
+      uvs' = reorderVertices arrayUvs $ map (\(_,_,u) -> u) no
+      ixsMap = M.fromList $ zip (map (\(v,n,_) -> (v,n)) no) [0..]
       fs = flip reorderFaceIxs ixsMap <$> faces
-  in Mesh vs norms Nothing fs
+  in Mesh vs norms uvs' fs
 
 cube :: Mesh
-cube = (\(vs, ns, fs) -> rearrangeMesh fs vs ns) cube'
+cube = (\(vs, ns, fs) -> rearrangeMesh fs vs ns []) cube'
 
 cube' :: ([L.V3 Float], [L.V3 Float], [FaceDesc])
 cube' = (
@@ -138,11 +141,12 @@ cube' = (
    FaceDesc ([5, 1, 8], Nothing, Just [6, 6, 6])
   ])
 
-normalOrder :: [FaceDesc] -> [(Word16, Word16)]
+normalOrder :: [FaceDesc] -> [(Word16, Word16, Word16)]
 normalOrder = nubSorted . sort . go
   where go [] = []
         go (FaceDesc (_, _, Nothing) : fs) = go fs
-        go (FaceDesc (vs, _, Just ns) : fs) = zip vs ns ++ go fs
+        go (FaceDesc (vs, Just uvs, Just ns) : fs) = zip3 vs ns uvs ++ go fs
+        go (FaceDesc (vs, _, Just ns) : fs) = zip3 vs ns (repeat 0) ++ go fs
         nubSorted = map head . group
 
 reorderVertices :: Array Int a -> [Word16] -> [a]
