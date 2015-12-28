@@ -67,7 +67,7 @@ ortho = L.ortho (-2) 2 (-2) 2 (-2) 2
 
 defaultCamera :: Camera
 defaultCamera = Camera {
-  cameraTransform = defaultTransform { transformPosition = L.V3 0 10 21 },
+  cameraTransform = defaultTransform { transformPosition = L.V3 0 10 20 },
   cameraProjection = persp }
 
 -- | Return the view rotation. This is the inverse of camera rotation.
