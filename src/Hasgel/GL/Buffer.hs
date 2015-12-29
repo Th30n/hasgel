@@ -3,8 +3,7 @@
 module Hasgel.GL.Buffer (
   Buffer, BufferData(..), BufferTarget(..), BufferUsage(..), BoundBuffer,
   bindBuffer, bufferData,
-  clearBufferfv, clearDepthBuffer,
-  vertexAttribPointer
+  clearBufferfv, clearDepthBuffer
 ) where
 
 import Control.Monad.IO.Class (MonadIO (..))
@@ -83,10 +82,3 @@ clearBufferfv buffer drawBuffer values =
 
 clearDepthBuffer :: MonadIO m => GLfloat -> m ()
 clearDepthBuffer value = liftIO . with value $ glClearBufferfv GL_DEPTH 0
-
-vertexAttribPointer :: MonadIO m =>
-                       GLuint -> GLint -> GLenum -> GLboolean ->
-                       GLsizei -> Ptr () -> m ()
-vertexAttribPointer index size typ normalize stride offset = do
-  glEnableVertexAttribArray index
-  glVertexAttribPointer index size typ normalize stride offset

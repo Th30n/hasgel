@@ -1,9 +1,9 @@
 module Hasgel.GL (
   module GL,
-  VertexArray, Texture, Index(..),
+  VertexArray, Texture,
   Query, GLError(..),
   getError, throwError,
-  bindVertexArray, vertexAttrib4f, vertexAttrib3f,
+  bindVertexArray,
   drawElements,
   beginQuery, endQuery, getQueryResult, withQuery, queryCounter
 ) where
@@ -19,6 +19,7 @@ import Foreign (Ptr, Storable (..), alloca, allocaArray, peek, peekArray,
 import Graphics.GL.Core45
 import Graphics.GL.Types
 
+import Hasgel.GL.Attribute as GL
 import Hasgel.GL.Buffer as GL
 import Hasgel.GL.Object as GL
 import Hasgel.GL.Param as GL
@@ -64,8 +65,6 @@ instance Gen Texture where
     glGenTextures (fromIntegral n) texPtr
     map Texture <$> peekArray n texPtr
 
-newtype Index = Index GLuint deriving (Show)
-
 newtype Query = Query GLuint deriving (Show)
 
 instance Object Query where
@@ -104,13 +103,6 @@ throwError = getError >>= \e -> when (e /= NoError) $ liftIO $ throwIO e
 
 bindVertexArray :: MonadIO m => VertexArray -> m ()
 bindVertexArray = glBindVertexArray . object
-
-vertexAttrib4f :: MonadIO m => Index ->
-                  GLfloat -> GLfloat -> GLfloat -> GLfloat -> m ()
-vertexAttrib4f (Index index) = glVertexAttrib4f index
-
-vertexAttrib3f :: MonadIO m => Index -> GLfloat -> GLfloat -> GLfloat -> m ()
-vertexAttrib3f (Index index) = glVertexAttrib3f index
 
 drawElements :: (Integral a, MonadIO m) =>
                 DrawMode -> a -> DataType -> Ptr () -> m ()

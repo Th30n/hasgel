@@ -105,9 +105,9 @@ main =
     glActiveTexture GL_TEXTURE0
     withResources $ \res -> do
       bindVertexArray (resVao res)
-      buf <- vertexAttribBuffer 0 3 GL_FLOAT $ meshVertices $ resMesh res
-      normalBuf <- vertexAttribBuffer 1 3 GL_FLOAT $ meshNormals $ resMesh res
-      uvsBuf <- vertexAttribBuffer 2 2 GL_FLOAT $ meshUvs $ resMesh res
+      buf <- vertexAttribBuffer (Index 0) $ meshVertices $ resMesh res
+      normalBuf <- vertexAttribBuffer (Index 1) $ meshNormals $ resMesh res
+      uvsBuf <- vertexAttribBuffer (Index 2) $ meshUvs $ resMesh res
       indexBuf <- genIndexBuffer $ resMesh res
       glEnable GL_DEPTH_TEST
       args <- getArgs
@@ -120,10 +120,10 @@ main =
       delete uvsBuf
       delete normalBuf
       delete buf
-  where vertexAttribBuffer ix comps typ attr = do
+  where vertexAttribBuffer ix attr = do
           buf <- gen
           bindBuffer ArrayBuffer buf $ bufferData attr StaticDraw
-          vertexAttribPointer ix comps typ GL_FALSE 0 nullPtr
+          vertexAttribPointer ix $ layout (head attr) GL_FALSE 0 nullPtr
           pure buf
 
 withDisplay :: (Display -> IO a) -> IO a
