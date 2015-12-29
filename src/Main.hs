@@ -5,13 +5,13 @@
 module Main ( main ) where
 
 import Control.Exception (bracket)
+import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Int (Int32)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Foreign (nullPtr)
-import System.Environment (getArgs)
 import System.IO (IOMode (..), hPrint, withFile)
 import Text.Printf (printf)
 
@@ -20,6 +20,7 @@ import Linear ((*^))
 import qualified Linear as L
 import qualified SDL
 
+import Hasgel.Args
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
 import Hasgel.Game (GameState (..), PlayerCmd (..), Ticcmd, addTiccmd,
@@ -53,12 +54,9 @@ data World = World
   , worldFrameTimer :: FT.FrameTimer
   , worldSimulation :: Simulation GameState
   , worldPlayerCmds :: Set PlayerCmd
-  , worldDemoState :: DemoState
   , worldPaused :: Bool
   , worldCamera :: Camera
   }
-
-data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show)
 
 instance HasResources World where
   getResources = worldResources
@@ -72,10 +70,9 @@ instance HasSimulation World GameState where
   getSimulation = worldSimulation
   setSimulation w sim = w { worldSimulation = sim }
 
-runTics :: MonadState World m => Milliseconds -> m ()
-runTics dt = do
+runTics :: MonadState World m => DemoState -> Milliseconds -> m ()
+runTics demo dt = do
   sim <- gets getSimulation
-  demo <- gets worldDemoState
   cmds <- gets worldPlayerCmds
   modify $ \w -> setSimulation w $ simulate sim dt $ updateGame demo cmds
 
@@ -90,11 +87,6 @@ genIndexBuffer mesh = do
   bindBuffer ElementArrayBuffer buf $
     bufferData ixs StaticDraw
   pure buf
-
-parseArgs :: [String] -> DemoState
-parseArgs ("-record":fp:_) = Record fp
-parseArgs ("-playdemo":fp:_) = Playback fp
-parseArgs _ = NoDemo
 
 main :: IO ()
 main =
@@ -111,11 +103,11 @@ main =
       indexBuf <- genIndexBuffer $ resMesh res
       glEnable GL_DEPTH_TEST
       args <- getArgs
-      let demo = parseArgs args
-      ticcmds <- case demo of
+      ticcmds <- case argsDemo args of
                    Playback fp -> readDemo fp
                    _ -> return []
-      void . execStateT loop =<< createWorld d res (gameState ticcmds) demo
+      world <- createWorld d res (gameState ticcmds)
+      void $ execStateT (runReaderT loop args) world
       delete indexBuf
       delete uvsBuf
       delete normalBuf
@@ -136,8 +128,8 @@ printGLInfo = do
     printf "GL Version: %s\n" =<< getParam Version
     printf "GLSL Version: %s\n" =<< getParam ShadingLanguageVersion
 
-createWorld :: Display -> Resources -> GameState -> DemoState -> IO World
-createWorld disp res gs demo = do
+createWorld :: Display -> Resources -> GameState -> IO World
+createWorld disp res gs = do
   time <- SDL.ticks
   let [q1, q2, q3, q4] = timeQueries res
       ft = FT.createFrameTimer ((q1, q2), (q3, q4)) time
@@ -147,18 +139,18 @@ createWorld disp res gs demo = do
                  worldResources = res, worldFrameTimer = ft,
                  worldSimulation = simulation gs,
                  worldPlayerCmds = Set.empty,
-                 worldDemoState = demo,
                  worldPaused = False,
                  worldCamera = defaultCamera }
 
-loop :: (MonadIO m, MonadBaseControl IO m, MonadState World m) => m ()
+loop :: (MonadIO m, MonadBaseControl IO m,
+         MonadState World m, MonadReader Args m) => m ()
 loop = do
   ls <- gets worldLoopState
   when (ls /= Quit) $ do
     liftIO getEvents >>= mapM_ handleEvent
     paused <- gets worldPaused
-    unless paused $ gets (timeDelta . worldTime) >>= runTics
-    demoState <- gets worldDemoState
+    demoState <- asks argsDemo
+    unless paused $ gets (timeDelta . worldTime) >>= runTics demoState
     case demoState of
       Playback _ -> checkDemoEnd
       Record fp -> liftIO . recordDemo fp =<< gets getSimulation

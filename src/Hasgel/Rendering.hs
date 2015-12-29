@@ -9,17 +9,18 @@ module Hasgel.Rendering (
 
 import Control.Monad (when)
 import Control.Arrow ((&&&))
-import System.Environment (getArgs)
 import Foreign (nullPtr)
 
 import Control.Lens ((.~), (^.))
 import Control.Monad.Base (MonadBase (..))
+import Control.Monad.Reader (MonadReader, asks)
 import Control.Monad.State (MonadState(..), gets)
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Graphics.GL.Core45
 import Linear ((!*!))
 import qualified Linear as L
 
+import Hasgel.Args (Args (..))
 import Hasgel.Simulation (Simulation(..), HasSimulation(..))
 import Hasgel.Game (GameState(..), Player(..))
 import Hasgel.Transform
@@ -110,36 +111,36 @@ cameraViewProjection :: Camera -> L.M44 Float
 cameraViewProjection = uncurry (!*!) . (cameraProjection &&& cameraView)
 
 renderPlayerShots :: (HasResources s, HasSimulation s GameState,
-                      MonadBaseControl IO m, MonadState s m) =>
+                      MonadBaseControl IO m, MonadState s m,
+                      MonadReader Args m) =>
                      Camera -> m ()
 renderPlayerShots camera = do
   playerShots <- gets $ gPlayerShots . simState . getSimulation
   mapM_ (cubeRenderer camera) playerShots
 
 renderInvaders :: (HasResources s, HasSimulation s GameState,
-                   MonadBaseControl IO m, MonadState s m) =>
+                   MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
                   Camera -> m ()
 renderInvaders camera = do
   invaders <- gets $ gInvaders . simState . getSimulation
   mapM_ (cubeRenderer camera) invaders
 
 renderPlayer :: (HasResources s, HasSimulation s GameState,
-                 MonadBaseControl IO m, MonadState s m) =>
+                 MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
                 Camera -> m ()
 renderPlayer camera = cubeRenderer camera =<< gets getPlayerTransform
 
 cubeRenderer :: (HasResources s, HasSimulation s GameState,
-                 MonadBaseControl IO m, MonadState s m) =>
+                 MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
                 Camera -> Transform -> m ()
 cubeRenderer camera transform = do
   mainProg <- Res.loadProgram gouraudProgramDesc
   normalsProg <- Res.loadProgram normalsProgramDesc
   res <- gets Res.getResources
-  let renderCube = renderMesh camera (resMesh res) transform
-  liftBase $ do
-    renderCube mainProg
-    args <- getArgs
-    when ("-normals" `elem` args) $ renderCube normalsProg
+  let renderCube = liftBase . renderMesh camera (resMesh res) transform
+  renderCube mainProg
+  renderNormals <- asks argsNormals
+  when renderNormals $ renderCube normalsProg
 
 renderMesh :: Camera -> Mesh -> Transform -> GL.Program -> IO ()
 renderMesh camera mesh transform prog = do

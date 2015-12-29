@@ -7,10 +7,10 @@ module Hasgel.Display (
 ) where
 
 import Control.Monad (when)
-import System.Environment (getArgs)
 
 import Control.Monad.IO.Class (MonadIO (..))
 
+import Hasgel.Args (Args (..), getArgs)
 import qualified Hasgel.SDL.Video as MySDL
 
 
@@ -28,9 +28,8 @@ createWindow = do
   MySDL.glSetContextVersion 4 3
   MySDL.glSetContextFlags [MySDL.GLForwardCompatible]
   MySDL.glSetContextProfile MySDL.GLCore
-  args <- liftIO getArgs
-  when ("-msaa" `elem` args) $
-    MySDL.glSetMultisample 4
+  msaa <- argsMsaa <$> liftIO getArgs
+  when msaa $ MySDL.glSetMultisample 4
   let t = "hasgel"
   let rect = MySDL.WindowRectangle (MySDL.Pos 0) MySDL.Centered 800 600
   MySDL.createWindow t rect [MySDL.WindowOpenGL]
