@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveFunctor #-}
+
 module Hasgel.GL.Program (
   Program, UsedProgram, useProgram, getUsedProgram, linkProgram
 ) where
@@ -25,9 +27,7 @@ instance Gen Program where
 
 -- | XXX: Duplicated from BoundBuffer
 newtype UsedProgram a = UsedProgram { withUsedProgram :: Program -> IO a }
-
-instance Functor UsedProgram where
-  fmap f (UsedProgram b) = UsedProgram $ fmap f . b
+                        deriving (Functor)
 
 instance Applicative UsedProgram where
   pure a = UsedProgram $ \_ -> pure a

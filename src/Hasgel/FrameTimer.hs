@@ -6,7 +6,7 @@ module Hasgel.FrameTimer (
 ) where
 
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.State (MonadState, get, modify)
+import Control.Monad.State (MonadState, gets, modify)
 import Data.Word (Word32)
 
 import Hasgel.GL (Query, getQueryResult, queryCounter)
@@ -31,7 +31,7 @@ class HasFrameTimer a where
 -- timings.
 withFrameTimer :: (HasFrameTimer s, MonadIO m, MonadState s m) => m a -> m a
 withFrameTimer action = do
-  ft@(FrameTimer qs frames _ _) <- getFrameTimer <$> get
+  ft@(FrameTimer qs frames _ _) <- gets getFrameTimer
   let q = if odd frames then fst qs else snd qs
   queryCounter $ fst q
   r <- action

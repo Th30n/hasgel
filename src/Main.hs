@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Main ( main ) where
@@ -30,7 +31,7 @@ import Hasgel.Rendering
 import Hasgel.Resources
 import qualified Hasgel.SDL as MySDL
 import Hasgel.Simulation (HasSimulation (..), Milliseconds, Simulation (..),
-                          Time (..), millis2Sec, simulate, simulation)
+                          Time (..), Update, millis2Sec, simulate, simulation)
 import Hasgel.Transform (rotateLocal, rotateWorld, translate)
 
 data CameraMovement =
@@ -78,7 +79,7 @@ runTics dt = do
   cmds <- gets worldPlayerCmds
   modify $ \w -> setSimulation w $ simulate sim dt $ updateGame demo cmds
 
-updateGame :: DemoState -> Set PlayerCmd -> Time -> GameState -> GameState
+updateGame :: DemoState -> Set PlayerCmd -> Update GameState
 updateGame (Playback _) _ time gs = ticGame time gs
 updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds time
 
@@ -103,19 +104,10 @@ main =
     glEnable GL_CULL_FACE
     glActiveTexture GL_TEXTURE0
     withResources $ \res -> do
-      bindVertexArray $ resVao res
-      buf <- gen
-      bindBuffer ArrayBuffer buf $
-        bufferData (meshVertices (resMesh res)) StaticDraw
-      vertexAttribPointer 0 3 GL_FLOAT GL_FALSE 0 nullPtr
-      normalBuf <- gen
-      bindBuffer ArrayBuffer normalBuf $
-        bufferData (meshNormals (resMesh res)) StaticDraw
-      vertexAttribPointer 1 3 GL_FLOAT GL_FALSE 0 nullPtr
-      uvsBuf <- gen
-      bindBuffer ArrayBuffer uvsBuf $
-        bufferData (meshUvs (resMesh res)) StaticDraw
-      vertexAttribPointer 2 2 GL_FLOAT GL_FALSE 0 nullPtr
+      bindVertexArray (resVao res)
+      buf <- vertexAttribBuffer 0 3 GL_FLOAT $ meshVertices $ resMesh res
+      normalBuf <- vertexAttribBuffer 1 3 GL_FLOAT $ meshNormals $ resMesh res
+      uvsBuf <- vertexAttribBuffer 2 2 GL_FLOAT $ meshUvs $ resMesh res
       indexBuf <- genIndexBuffer $ resMesh res
       glEnable GL_DEPTH_TEST
       args <- getArgs
@@ -128,6 +120,11 @@ main =
       delete uvsBuf
       delete normalBuf
       delete buf
+  where vertexAttribBuffer ix comps typ attr = do
+          buf <- gen
+          bindBuffer ArrayBuffer buf $ bufferData attr StaticDraw
+          vertexAttribPointer ix comps typ GL_FALSE 0 nullPtr
+          pure buf
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
@@ -164,7 +161,7 @@ loop = do
     demoState <- gets worldDemoState
     case demoState of
       Playback _ -> checkDemoEnd
-      Record fp -> recordDemo fp
+      Record fp -> liftIO . recordDemo fp =<< gets getSimulation
       _ -> return ()
     clearOldTiccmds
     disp <- gets worldDisplay
@@ -192,9 +189,8 @@ checkDemoEnd = do
 readDemo :: FilePath -> IO [Ticcmd]
 readDemo fp = concatMap read . lines <$> readFile fp
 
-recordDemo :: (MonadIO m, MonadState World m) => FilePath -> m ()
-recordDemo fp = do
-  sim <- gets getSimulation
+recordDemo :: FilePath -> Simulation GameState -> IO ()
+recordDemo fp sim = do
   let ticcmds = reverse . gOldTiccmds $ simState sim
   liftIO . withFile fp AppendMode $ \fh -> hPrint fh ticcmds
 
