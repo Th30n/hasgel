@@ -14,8 +14,7 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Data.Maybe (fromMaybe)
 import Data.Typeable (Typeable)
 import Data.Word (Word64)
-import Foreign (Ptr, Storable (..), alloca, allocaArray, peek, peekArray,
-                withArrayLen)
+import Foreign (Ptr, Storable (..), alloca, peek)
 import Graphics.GL.Core45
 import Graphics.GL.Types
 
@@ -44,38 +43,29 @@ instance Exception GLError
 newtype VertexArray = VertexArray GLuint deriving (Show)
 
 instance Object VertexArray where
-  deletes vaos = liftIO . withArrayLen (object <$> vaos) $ \n ptr ->
-    glDeleteVertexArrays (fromIntegral n) ptr
+  deletes = deletesWith glDeleteVertexArrays
   object (VertexArray obj) = obj
 
 instance Gen VertexArray where
-  gens n = liftIO . allocaArray n $ \vaoPtr -> do
-    glGenVertexArrays (fromIntegral n) vaoPtr
-    map VertexArray <$> peekArray n vaoPtr
+  gens = gensWith glGenVertexArrays VertexArray
 
 newtype Texture = Texture GLuint deriving (Show)
 
 instance Object Texture where
-  deletes texs = liftIO . withArrayLen (object <$> texs) $ \n ptr ->
-    glDeleteTextures (fromIntegral n) ptr
+  deletes = deletesWith glDeleteTextures
   object (Texture obj) = obj
 
 instance Gen Texture where
-  gens n = liftIO . allocaArray n $ \texPtr -> do
-    glGenTextures (fromIntegral n) texPtr
-    map Texture <$> peekArray n texPtr
+  gens = gensWith glGenTextures Texture
 
 newtype Query = Query GLuint deriving (Show)
 
 instance Object Query where
   object (Query q) = q
-  deletes qs = liftIO . withArrayLen (object <$> qs) $ \n ptr ->
-    glDeleteQueries (fromIntegral n) ptr
+  deletes = deletesWith glDeleteQueries
 
 instance Gen Query where
-  gens n = liftIO . allocaArray n $ \ptr -> do
-    glGenQueries (fromIntegral n) ptr
-    map Query <$> peekArray n ptr
+  gens = gensWith glGenQueries Query
 
 type QueryTarget = GLenum
 type DrawMode = GLenum

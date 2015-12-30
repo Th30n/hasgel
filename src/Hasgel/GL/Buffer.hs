@@ -8,8 +8,7 @@ module Hasgel.GL.Buffer (
 ) where
 
 import Control.Monad.Reader
-import Foreign (Ptr, Storable (..), allocaArray, castPtr, peekArray, with,
-                withArray, withArrayLen)
+import Foreign (Ptr, Storable (..), castPtr, with, withArray)
 
 import Graphics.GL.Core45
 import Graphics.GL.Types
@@ -20,13 +19,10 @@ newtype Buffer = Buffer GLuint deriving (Show)
 
 instance Object Buffer where
   object (Buffer obj) = obj
-  deletes bufs = liftIO . withArrayLen (object <$> bufs) $ \n ptr ->
-    glDeleteBuffers (fromIntegral n) ptr
+  deletes = deletesWith glDeleteBuffers
 
 instance Gen Buffer where
-  gens n = liftIO . allocaArray n $ \ptr -> do
-    glGenBuffers (fromIntegral n) ptr
-    map Buffer <$> peekArray n ptr
+  gens = gensWith glGenBuffers Buffer
 
 data BufferTarget =
   ArrayBuffer
