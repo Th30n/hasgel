@@ -1,12 +1,11 @@
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Hasgel.GL.Program (
   Program, UsedProgram, useProgram, getUsedProgram, linkProgram
 ) where
 
 import Control.Exception (throwIO)
-import Control.Monad (when)
-import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Reader
 import Foreign (Storable (..), alloca, allocaArray, nullPtr, peek)
 import Foreign.C (peekCString)
 import Graphics.GL.Core45
@@ -25,31 +24,16 @@ instance Object Program where
 instance Gen Program where
   gen = createProgram
 
--- | XXX: Duplicated from BoundBuffer
-newtype UsedProgram a = UsedProgram { withUsedProgram :: Program -> IO a }
-                        deriving (Functor)
-
-instance Applicative UsedProgram where
-  pure a = UsedProgram $ \_ -> pure a
-
-  (UsedProgram f) <*> (UsedProgram a) =
-    UsedProgram $ \program -> f program <*> a program
-
-instance Monad UsedProgram where
-  (UsedProgram a) >>= f = UsedProgram $ \program -> do
-    a' <- a program
-    withUsedProgram (f a') program
-
-instance MonadIO UsedProgram where
-  liftIO action = UsedProgram $ const action
+newtype UsedProgram a = UsedProgram { withUsedProgram :: ReaderT Program IO a }
+                        deriving (Functor, Applicative, Monad, MonadIO)
 
 useProgram :: MonadIO m => Program -> UsedProgram a -> m a
 useProgram program actions = do
   glUseProgram $ object program
-  liftIO $ withUsedProgram actions program
+  liftIO $ runReaderT (withUsedProgram actions) program
 
 getUsedProgram :: UsedProgram Program
-getUsedProgram = UsedProgram pure
+getUsedProgram = UsedProgram ask
 
 createProgram :: MonadIO m => m Program
 createProgram = do
