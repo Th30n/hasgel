@@ -1,6 +1,6 @@
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 
 module Main ( main ) where
 
@@ -11,7 +11,6 @@ import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Int (Int32)
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Foreign (nullPtr)
 import System.IO (IOMode (..), hPrint, withFile)
 import Text.Printf (printf)
 
@@ -80,14 +79,6 @@ updateGame :: DemoState -> Set PlayerCmd -> Update GameState
 updateGame (Playback _) _ time gs = ticGame time gs
 updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds time
 
-genIndexBuffer :: Mesh -> IO Buffer
-genIndexBuffer mesh = do
-  let ixs = meshVertexIx mesh
-  buf <- gen
-  bindBuffer ElementArrayBuffer buf $
-    bufferData ixs StaticDraw
-  pure buf
-
 main :: IO ()
 main =
   MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
@@ -96,11 +87,12 @@ main =
     glEnable GL_CULL_FACE
     glActiveTexture GL_TEXTURE0
     withResources $ \res -> do
-      bindVertexArray (resVao res)
-      buf <- vertexAttribBuffer (Index 0) $ meshVertices $ resMesh res
-      normalBuf <- vertexAttribBuffer (Index 1) $ meshNormals $ resMesh res
-      uvsBuf <- vertexAttribBuffer (Index 2) $ meshUvs $ resMesh res
-      indexBuf <- genIndexBuffer $ resMesh res
+      bufs <- setVertexArray (resVao res) $ do
+        let mesh = resMesh res
+        attrib $ meshVertices mesh
+        attrib $ meshNormals mesh
+        attrib $ meshUvs mesh
+        indexBuffer $ meshVertexIx mesh
       glEnable GL_DEPTH_TEST
       args <- getArgs
       ticcmds <- case argsDemo args of
@@ -108,15 +100,7 @@ main =
                    _ -> return []
       world <- createWorld d res (gameState ticcmds)
       void $ execStateT (runReaderT loop args) world
-      delete indexBuf
-      delete uvsBuf
-      delete normalBuf
-      delete buf
-  where vertexAttribBuffer ix attr = do
-          buf <- gen
-          bindBuffer ArrayBuffer buf $ bufferData attr StaticDraw
-          vertexAttribPointer ix $ layout (head attr) GL_FALSE 0 nullPtr
-          pure buf
+      deletes bufs
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay

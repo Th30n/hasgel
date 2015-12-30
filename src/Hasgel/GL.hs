@@ -1,9 +1,7 @@
 module Hasgel.GL (
   module GL,
-  VertexArray, Texture,
-  Query, GLError(..),
+  Texture, Query, GLError(..),
   getError, throwError,
-  bindVertexArray,
   drawElements,
   beginQuery, endQuery, getQueryResult, withQuery, queryCounter
 ) where
@@ -39,15 +37,6 @@ data GLError =
   deriving (Show, Eq, Typeable)
 
 instance Exception GLError
-
-newtype VertexArray = VertexArray GLuint deriving (Show)
-
-instance Object VertexArray where
-  deletes = deletesWith glDeleteVertexArrays
-  object (VertexArray obj) = obj
-
-instance Gen VertexArray where
-  gens = gensWith glGenVertexArrays VertexArray
 
 newtype Texture = Texture GLuint deriving (Show)
 
@@ -90,9 +79,6 @@ getError = (fromMaybe NoError . unmarshalGLError) <$> glGetError
 -- | Throws an 'GLError' on error.
 throwError :: MonadIO m => m ()
 throwError = getError >>= \e -> when (e /= NoError) $ liftIO $ throwIO e
-
-bindVertexArray :: MonadIO m => VertexArray -> m ()
-bindVertexArray = glBindVertexArray . object
 
 drawElements :: (Integral a, MonadIO m) =>
                 DrawMode -> a -> DataType -> Ptr () -> m ()

@@ -1,11 +1,12 @@
 module Hasgel.GL.Object (
-  Object(..), Gen(..), gensWith, deletesWith
+  Object(..), Gen(..), VertexArray, gensWith, deletesWith, bindVertexArray
 ) where
 
 import Control.Monad (replicateM)
 import Control.Monad.IO.Class (MonadIO (..))
 import Foreign (Ptr, allocaArray, peekArray, withArrayLen)
 
+import Graphics.GL.Core45
 import Graphics.GL.Types
 
 class Object a where
@@ -22,6 +23,18 @@ class Object a => Gen a where
   gen = head <$> gens 1
   gens :: (Object a, MonadIO m) => Int -> m [a]
   gens n = replicateM n gen
+
+newtype VertexArray = VertexArray GLuint deriving (Show)
+
+instance Object VertexArray where
+  deletes = deletesWith glDeleteVertexArrays
+  object (VertexArray obj) = obj
+
+instance Gen VertexArray where
+  gens = gensWith glGenVertexArrays VertexArray
+
+bindVertexArray :: MonadIO m => VertexArray -> m ()
+bindVertexArray = glBindVertexArray . object
 
 type GensFun = GLsizei -> Ptr GLuint -> IO ()
 type DeletesFun = GLsizei -> Ptr GLuint -> IO ()
