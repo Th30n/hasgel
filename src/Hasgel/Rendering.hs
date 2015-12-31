@@ -4,7 +4,7 @@ module Hasgel.Rendering (
   Camera(..), defaultCamera, viewForward, viewBack, viewRight, viewLeft,
   viewUp, viewDown,
   renderCameraOrientation, renderPlayer, renderPlayerShots, renderInvaders,
-  axisRenderer
+  axisRenderer, renderPlane
 ) where
 
 import Control.Monad (when)
@@ -37,6 +37,10 @@ data Camera = Camera
 mainProgramDesc :: Res.ProgramDesc
 mainProgramDesc = [("shaders/basic.vert", GL.VertexShader),
                    ("shaders/basic.frag", GL.FragmentShader)]
+
+textureProgramDesc :: Res.ProgramDesc
+textureProgramDesc = [("shaders/pass.vert", GL.VertexShader),
+                      ("shaders/texture.frag", GL.FragmentShader)]
 
 gouraudProgramDesc :: Res.ProgramDesc
 gouraudProgramDesc = [("shaders/gouraud.vert", GL.VertexShader),
@@ -185,4 +189,17 @@ renderAxis scale mvp = do
       GL.uniformByName "scale" scale
       GL.uniformByName "mvp" mvp
     glDrawArrays GL_POINTS 0 1
+    GL.bindVertexArray vao
+
+renderPlane :: (HasResources s, MonadBaseControl IO m, MonadState s m) => m ()
+renderPlane = do
+  prog <- Res.loadProgram textureProgramDesc
+  planeVao <- gets $ resPlaneVao . getResources
+  vao <- gets $ resVao . getResources
+  liftBase $ do
+    GL.bindVertexArray planeVao
+    let model = rotateLocal defaultTransform $ L.V3 90 0 0
+    GL.useProgram prog $
+      GL.uniformByName "mvp" $ transform2M44 model
+    GL.drawElements GL_TRIANGLES (6 :: Int) GL_UNSIGNED_SHORT nullPtr
     GL.bindVertexArray vao

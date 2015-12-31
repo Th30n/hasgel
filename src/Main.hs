@@ -85,7 +85,6 @@ main =
     printGLInfo
     glViewport 0 0 800 600
     glEnable GL_CULL_FACE
-    glActiveTexture GL_TEXTURE0
     withResources $ \res -> do
       bufs <- setVertexArray (resVao res) $ do
         let mesh = resMesh res
@@ -142,16 +141,26 @@ loop = do
     clearOldTiccmds
     disp <- gets worldDisplay
     renderDisplay disp . FT.withFrameTimer $ do
+      fbo <- gets $ resFbo . getResources
+      bindFramebuffer FramebufferTarget fbo $ do
+        clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
+        clearDepthBuffer 1
+        camera <- lift $ gets worldCamera
+        tex <- lift . gets $ resTex . getResources
+        glActiveTexture GL_TEXTURE0
+        glBindTexture GL_TEXTURE_2D $ object tex
+        lift $ mapM_ ($ camera) [renderPlayer,
+                                 renderPlayerShots,
+                                 renderInvaders,
+                                 axisRenderer]
+        glViewport 0 0 100 100
+        lift $ renderCameraOrientation camera
+        glViewport 0 0 800 600
       clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
       clearDepthBuffer 1
-      camera <- gets worldCamera
-      mapM_ ($ camera) [renderPlayer,
-                        renderPlayerShots,
-                        renderInvaders,
-                        axisRenderer]
-      glViewport 0 0 100 100
-      renderCameraOrientation camera
-      glViewport 0 0 800 600
+      fboTex <- gets $ resFboTex . getResources
+      glBindTexture GL_TEXTURE_2D $ object fboTex
+      renderPlane
       throwError
     displayFrameRate
     updateTime

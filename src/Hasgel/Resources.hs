@@ -7,6 +7,7 @@ module Hasgel.Resources (
   withResources, emptyPrograms, loadProgram, freePrograms
 ) where
 
+import Foreign (nullPtr)
 import Control.Exception (Exception (..), bracket)
 import Control.Exception.Lifted (catch, catchJust)
 import Control.Monad (void)
@@ -22,7 +23,7 @@ import System.IO.Error (isDoesNotExistError, isPermissionError)
 import Graphics.GL.Core45
 
 import qualified Hasgel.GL as GL
-import Hasgel.Mesh (Mesh, cube, loadHmd)
+import Hasgel.Mesh (Mesh (..), cube, loadHmd, meshVertexIx)
 import qualified Hasgel.SDL as SDL
 
 type ModificationTime = UTCTime
@@ -30,12 +31,15 @@ type ShaderDesc = (FilePath, GL.ShaderType)
 type ProgramDesc = [ShaderDesc]
 
 data Resources = Resources
-  { texture :: GL.Texture
+  { resTex :: GL.Texture
   , timeQueries :: [GL.Query]
   , resPrograms :: Programs
   , resMesh :: Mesh
+  , resPlaneVao :: GL.VertexArray
   , resVao :: GL.VertexArray
   , resAxisVao :: GL.VertexArray
+  , resFbo :: GL.Framebuffer
+  , resFboTex :: GL.Texture
   }
 
 data Programs = Programs
@@ -72,17 +76,63 @@ loadResources = do
     tex <- loadTexture "share/models/player-ship-diffuse.bmp"
     qs <- GL.gens 4
     eitherMesh <- loadHmd "share/models/player-ship.hmd"
-    vao <- GL.gen
-    axisVao <- GL.gen
+    [vao, axisVao, planeVao] <- GL.gens 3
+    -- XXX: Clean up bufs
+    bufs <- setPlaneVao planeVao
     mesh <- case eitherMesh of
               Left err -> putStrLn err >> pure cube
               Right m -> pure m
-    pure $ Resources tex qs emptyPrograms mesh vao axisVao
+    fbo <- GL.gen
+    fboTex <- setFbo fbo
+    pure Resources { resTex = tex, timeQueries = qs,
+                     resPrograms = emptyPrograms, resMesh = mesh,
+                     resVao = vao, resAxisVao = axisVao,
+                     resPlaneVao = planeVao, resFbo = fbo, resFboTex = fboTex }
+
+freeResources :: Resources -> IO ()
+freeResources res = do
+  GL.delete $ resTex res
+  GL.deletes $ timeQueries res
+  GL.deletes $ map ($ res) [resVao, resAxisVao, resPlaneVao]
+  GL.delete $ resFbo res
+  GL.delete $ resFboTex res
+  void . freePrograms $ resPrograms res
+
+setPlaneVao :: GL.VertexArray -> IO [GL.Buffer]
+setPlaneVao vao = do
+  eitherMesh <- loadHmd "share/models/plane.hmd"
+  case eitherMesh of
+    Left err -> putStrLn err >> pure []
+    Right mesh -> GL.setVertexArray vao $ do
+                    -- XXX: Duplicated from Main.hs
+                    GL.attrib $ meshVertices mesh
+                    GL.attrib $ meshNormals mesh
+                    GL.attrib $ meshUvs mesh
+                    GL.indexBuffer $ meshVertexIx mesh
+
+setFbo :: GL.Framebuffer -> IO GL.Texture
+setFbo fbo = do
+  colorTex <- GL.gen :: IO GL.Texture
+  glActiveTexture GL_TEXTURE0
+  glBindTexture GL_TEXTURE_2D $ GL.object colorTex
+  let w = 800
+      h = 600
+  glTexImage2D GL_TEXTURE_2D 0 GL_RGBA w h 0 GL_RGBA GL_UNSIGNED_BYTE nullPtr
+  glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_NEAREST
+  glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_LINEAR
+  -- XXX: Delete gens
+  depthBuf <- GL.gen
+  GL.bindFramebuffer GL.FramebufferTarget fbo $ do
+    GL.framebufferTexture2D GL_COLOR_ATTACHMENT0 GL_TEXTURE_2D colorTex 0
+    GL.framebufferDepth w h depthBuf
+    GL.drawBuffers [GL_COLOR_ATTACHMENT0]
+  pure colorTex
 
 loadTexture :: FilePath -> IO GL.Texture
 loadTexture file = do
   s <- SDL.loadBMP file
   tex <- GL.gen
+  glActiveTexture GL_TEXTURE0
   glBindTexture GL_TEXTURE_2D $ GL.object tex
   let w = fromIntegral $ SDL.surfaceW s
       h = fromIntegral $ SDL.surfaceH s
@@ -92,14 +142,6 @@ loadTexture file = do
   glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_NEAREST
   SDL.freeSurface s
   pure tex
-
-freeResources :: Resources -> IO ()
-freeResources res = do
-  GL.delete $ texture res
-  GL.deletes $ timeQueries res
-  GL.delete $ resVao res
-  GL.delete $ resAxisVao res
-  void . freePrograms $ resPrograms res
 
 loadShader :: (HasPrograms s, MonadBaseControl IO m, MonadState s m) =>
               ShaderDesc -> m GL.Shader
