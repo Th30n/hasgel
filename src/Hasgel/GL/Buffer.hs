@@ -1,5 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Hasgel.GL.Buffer (
   Buffer, BufferData(..), BufferTarget(..), BufferUsage(..), BoundBuffer,
@@ -7,7 +6,7 @@ module Hasgel.GL.Buffer (
   clearBufferfv, clearDepthBuffer
 ) where
 
-import Control.Monad.Reader
+import Control.Monad.IO.Class (MonadIO (..))
 import Foreign (Ptr, Storable (..), castPtr, with, withArray)
 
 import Graphics.GL.Core45
@@ -51,17 +50,15 @@ instance Storable a => BufferData [a] where
 type DrawBuffer = GLint
 type ClearBuffer = GLenum
 
-newtype BoundBuffer a =
-  BoundBuffer { withBoundBuffer :: ReaderT BufferTarget IO a }
-  deriving (Functor, Applicative, Monad, MonadIO)
+type BoundBuffer = WithUse BufferTarget
 
 bindBuffer :: BufferTarget -> Buffer -> BoundBuffer a -> IO a
 bindBuffer target buffer actions = do
   glBindBuffer (marshalBufferTarget target) $ object buffer
-  runReaderT (withBoundBuffer actions) target
+  runWithUse actions target
 
 bufferData :: BufferData a => a -> BufferUsage -> BoundBuffer ()
-bufferData values usage = BoundBuffer $ ask >>= \target ->
+bufferData values usage = askUse >>= \target ->
   let bytes = fromIntegral $ sizeOfData values
   in withDataPtr values $ \ptr ->
   glBufferData (marshalBufferTarget target) bytes ptr (marshalBufferUsage usage)

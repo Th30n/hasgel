@@ -1,6 +1,6 @@
 module Hasgel.GL (
   module GL,
-  Texture, Query, GLError(..),
+  Query, GLError(..),
   getError, throwError,
   drawElements,
   beginQuery, endQuery, getQueryResult, withQuery, queryCounter
@@ -18,6 +18,7 @@ import Graphics.GL.Types
 
 import Hasgel.GL.Attribute as GL
 import Hasgel.GL.Buffer as GL
+import Hasgel.GL.Framebuffer as GL
 import Hasgel.GL.Object as GL
 import Hasgel.GL.Param as GL
 import Hasgel.GL.Program as GL
@@ -37,15 +38,6 @@ data GLError =
   deriving (Show, Eq, Typeable)
 
 instance Exception GLError
-
-newtype Texture = Texture GLuint deriving (Show)
-
-instance Object Texture where
-  deletes = deletesWith glDeleteTextures
-  object (Texture obj) = obj
-
-instance Gen Texture where
-  gens = gensWith glGenTextures Texture
 
 newtype Query = Query GLuint deriving (Show)
 

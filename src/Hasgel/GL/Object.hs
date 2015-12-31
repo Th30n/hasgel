@@ -1,9 +1,11 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Hasgel.GL.Object (
-  Object(..), Gen(..), VertexArray, gensWith, deletesWith, bindVertexArray
+  Object(..), Gen(..), VertexArray, WithUse, runWithUse, askUse,
+  gensWith, deletesWith, bindVertexArray
 ) where
 
-import Control.Monad (replicateM)
-import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Reader
 import Foreign (Ptr, allocaArray, peekArray, withArrayLen)
 
 import Graphics.GL.Core45
@@ -33,6 +35,16 @@ instance Object VertexArray where
 instance Gen VertexArray where
   gens = gensWith glGenVertexArrays VertexArray
 
+newtype WithUse b a =
+  WithUse { withUse :: ReaderT b IO a }
+  deriving (Functor, Applicative, Monad, MonadIO)
+
+runWithUse :: WithUse b a -> b -> IO a
+runWithUse actions = runReaderT (withUse actions)
+
+askUse :: WithUse b b
+askUse = WithUse ask
+
 bindVertexArray :: MonadIO m => VertexArray -> m ()
 bindVertexArray = glBindVertexArray . object
 
@@ -44,6 +56,6 @@ gensWith g wrap n = liftIO . allocaArray n $ \ptr -> do
     g (fromIntegral n) ptr
     map wrap <$> peekArray n ptr
 
-deletesWith :: (MonadIO m, Object a) => DeletesFun-> [a] -> m ()
+deletesWith :: (MonadIO m, Object a) => DeletesFun -> [a] -> m ()
 deletesWith del bufs = liftIO . withArrayLen (object <$> bufs) $ \n ptr ->
     del (fromIntegral n) ptr
