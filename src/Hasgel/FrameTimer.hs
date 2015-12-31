@@ -15,9 +15,9 @@ type Milliseconds = Word32
 
 data FrameTimer = FrameTimer
   { timerQueries :: ((Query, Query), (Query, Query))
-  , timerFrames :: Int
-  , timerAccum :: Double
-  , timerStart :: Milliseconds
+  , timerFrames :: !Int
+  , timerAccum :: !Double
+  , timerStart :: !Milliseconds
   } deriving (Show)
 
 class HasFrameTimer a where

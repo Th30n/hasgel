@@ -22,7 +22,7 @@ data GameState = GameState
   , gInvaders :: [Transform]
   , gInvaderDir :: InvaderDir
   , gOldInvaderDir :: InvaderDir
-  , gStartMoveDown :: Milliseconds
+  , gStartMoveDown :: !Milliseconds
   }
 
 data InvaderDir = DirLeft | DirRight | DirDown deriving (Eq, Show)
@@ -31,13 +31,13 @@ data Player = Player
   { playerTransform :: Transform
     -- | Time when the next shot can be fired. This allows shooting right at
     -- the start, when the time is 0.
-  , playerShotTime :: Milliseconds
+  , playerShotTime :: !Milliseconds
   }
 
 -- | Commands for one tic of gameplay.
 data Ticcmd = Ticcmd
-  { cmdMove :: Float -- ^ Horizontal movement speed.
-  , cmdShoot :: Bool -- ^ True if shooting.
+  { cmdMove :: !Float -- ^ Horizontal movement speed.
+  , cmdShoot :: !Bool -- ^ True if shooting.
   } deriving (Show, Read)
 
 -- | Player control commands.

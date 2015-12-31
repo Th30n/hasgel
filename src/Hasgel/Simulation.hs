@@ -12,8 +12,8 @@ import Data.Word (Word32)
 type Milliseconds = Word32
 
 data Time = Time
-  { timeCurrent :: Milliseconds
-  , timeDelta :: Milliseconds
+  { timeCurrent :: !Milliseconds
+  , timeDelta :: !Milliseconds
   }
 
 type Update a = Time -> a -> a

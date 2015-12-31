@@ -178,10 +178,10 @@ reloadProgram desc lastModTime lastProgram =
                     programs' = programs { programsMap = programsMap' }
                 modify $ flip setPrograms programs'
                 pure lastProgram
-      where reloadProgram' = do
-              prog <- insertProgram desc
-              liftBase $ GL.delete lastProgram
-              pure prog
+  where reloadProgram' = do
+          prog <- insertProgram desc
+          liftBase $ GL.delete lastProgram
+          pure prog
 
 handleFileError :: MonadBaseControl IO m => a -> m a -> m a
 handleFileError def action =

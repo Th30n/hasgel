@@ -8,8 +8,8 @@ data DemoState = Record FilePath | Playback FilePath | NoDemo deriving (Eq, Show
 
 data Args = Args
   { argsDemo :: DemoState
-  , argsNormals :: Bool
-  , argsMsaa :: Bool
+  , argsNormals :: !Bool
+  , argsMsaa :: !Bool
   }
 
 defaultArgs :: Args
