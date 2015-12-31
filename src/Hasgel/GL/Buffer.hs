@@ -52,12 +52,12 @@ type ClearBuffer = GLenum
 
 type BoundBuffer = WithUse BufferTarget
 
-bindBuffer :: BufferTarget -> Buffer -> BoundBuffer a -> IO a
+bindBuffer :: MonadIO m => BufferTarget -> Buffer -> BoundBuffer m a -> m a
 bindBuffer target buffer actions = do
   glBindBuffer (marshalBufferTarget target) $ object buffer
   runWithUse actions target
 
-bufferData :: BufferData a => a -> BufferUsage -> BoundBuffer ()
+bufferData :: (MonadIO m, BufferData a) => a -> BufferUsage -> BoundBuffer m ()
 bufferData values usage = askUse >>= \target ->
   let bytes = fromIntegral $ sizeOfData values
   in withDataPtr values $ \ptr ->

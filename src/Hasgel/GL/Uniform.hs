@@ -19,8 +19,10 @@ newtype UniformLocation = UniformLocation { unwrapLocation :: GLint }
 
 class UniformData a where
   {-# MINIMAL uniformv #-}
-  uniformv :: UniformData a => UniformLocation -> [a] -> UsedProgram ()
-  uniform :: UniformData a => UniformLocation -> a -> UsedProgram ()
+  uniformv :: (MonadIO m, UniformData a) =>
+              UniformLocation -> [a] -> UsedProgram m ()
+  uniform :: (MonadIO m, UniformData a) =>
+             UniformLocation -> a -> UsedProgram m ()
   uniform loc x = uniformv loc [x]
 
 instance UniformData (L.M44 Float) where
@@ -35,14 +37,14 @@ instance UniformData Float where
   uniformv loc fs = liftIO . withArrayLen fs $ \n ->
     glUniform1fv (unwrapLocation loc) (fromIntegral n) . castPtr
 
-uniformByName :: UniformData a => String -> a -> UsedProgram ()
+uniformByName :: (MonadIO m, UniformData a) => String -> a -> UsedProgram m ()
 uniformByName name v = do
   mbLoc <- getUniformLocation name
   case mbLoc of
     Just loc -> uniform loc v
     Nothing -> liftIO $ printf "Missing uniform '%s'\n" name
 
-getUniformLocation :: String -> UsedProgram (Maybe UniformLocation)
+getUniformLocation :: MonadIO m => String -> UsedProgram m (Maybe UniformLocation)
 getUniformLocation name = do
   program <- getUsedProgram
   liftIO . withCAString name $ \ptr -> do

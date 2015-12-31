@@ -53,7 +53,7 @@ type BoundFramebuffer = WithUse FramebufferTarget
 
 -- | Runs actions with bound framebuffer. Framebuffer binding reverts to
 -- default at the end.
-bindFramebuffer :: FramebufferTarget -> Framebuffer -> BoundFramebuffer a -> IO a
+bindFramebuffer :: MonadIO m => FramebufferTarget -> Framebuffer -> BoundFramebuffer m a -> m a
 bindFramebuffer target buffer actions = do
   glBindFramebuffer (marshalFramebufferTarget target) $ object buffer
   res <- runWithUse actions target
@@ -64,13 +64,14 @@ type Attachment = GLenum
 type TexTarget = GLenum
 type Level = GLint
 
-framebufferTexture2D :: Attachment -> TexTarget -> Texture -> Level ->
-                        BoundFramebuffer ()
+framebufferTexture2D :: MonadIO m => Attachment -> TexTarget -> Texture ->
+                        Level -> BoundFramebuffer m ()
 framebufferTexture2D attachment textarget texture level = do
   target <- marshalFramebufferTarget <$> askUse
   glFramebufferTexture2D target attachment textarget (object texture) level
 
-framebufferDepth :: GLsizei -> GLsizei -> Renderbuffer -> BoundFramebuffer ()
+framebufferDepth :: MonadIO m => GLsizei -> GLsizei -> Renderbuffer ->
+                    BoundFramebuffer m ()
 framebufferDepth w h renderbuffer = do
   bindRenderbuffer renderbuffer
   glRenderbufferStorage GL_RENDERBUFFER GL_DEPTH_COMPONENT w h

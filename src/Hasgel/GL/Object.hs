@@ -35,14 +35,17 @@ instance Object VertexArray where
 instance Gen VertexArray where
   gens = gensWith glGenVertexArrays VertexArray
 
-newtype WithUse b a =
-  WithUse { withUse :: ReaderT b IO a }
+newtype WithUse b m a =
+  WithUse { withUse :: ReaderT b m a }
   deriving (Functor, Applicative, Monad, MonadIO)
 
-runWithUse :: WithUse b a -> b -> IO a
+instance MonadTrans (WithUse b) where
+  lift = WithUse . lift
+
+runWithUse :: MonadIO m => WithUse b m a -> b -> m a
 runWithUse actions = runReaderT (withUse actions)
 
-askUse :: WithUse b b
+askUse :: Monad m => WithUse b m b
 askUse = WithUse ask
 
 bindVertexArray :: MonadIO m => VertexArray -> m ()

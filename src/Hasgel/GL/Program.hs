@@ -25,12 +25,12 @@ instance Gen Program where
 
 type UsedProgram = WithUse Program
 
-useProgram :: MonadIO m => Program -> UsedProgram a -> m a
+useProgram :: MonadIO m => Program -> UsedProgram m a -> m a
 useProgram program actions = do
   glUseProgram $ object program
-  liftIO $ runWithUse actions program
+  runWithUse actions program
 
-getUsedProgram :: UsedProgram Program
+getUsedProgram :: Monad m => UsedProgram m Program
 getUsedProgram = askUse
 
 createProgram :: MonadIO m => m Program
