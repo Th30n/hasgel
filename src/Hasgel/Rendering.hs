@@ -9,8 +9,6 @@ module Hasgel.Rendering (
 
 import Control.Monad (when)
 import Control.Arrow ((&&&))
-import Foreign (nullPtr)
-
 import Control.Lens ((.~), (^.))
 import Control.Monad.Base (MonadBase (..))
 import Control.Monad.Reader (MonadReader, asks)
@@ -24,8 +22,8 @@ import Hasgel.Args (Args (..))
 import Hasgel.Simulation (Simulation(..), HasSimulation(..))
 import Hasgel.Game (GameState(..), Player(..))
 import Hasgel.Transform
+import Hasgel.Drawable
 import qualified Hasgel.GL as GL
-import Hasgel.Mesh (Mesh, meshVertexCount)
 import Hasgel.Resources (HasResources(..), Resources(..))
 import qualified Hasgel.Resources as Res
 
@@ -140,22 +138,20 @@ cubeRenderer :: (HasResources s, HasSimulation s GameState,
 cubeRenderer camera transform = do
   mainProg <- Res.loadProgram gouraudProgramDesc
   normalsProg <- Res.loadProgram normalsProgramDesc
-  res <- gets Res.getResources
-  let renderCube = liftBase . renderMesh camera (resMesh res) transform
-  renderCube mainProg
-  renderNormals <- asks argsNormals
-  when renderNormals $ renderCube normalsProg
-
-renderMesh :: Camera -> Mesh -> Transform -> GL.Program -> IO ()
-renderMesh camera mesh transform prog = do
+  Just ship <- Res.getDrawable "player-ship"
   let mvp = cameraViewProjection camera !*! transform2M44 transform
       -- Normal transform assumes uniform scaling.
       normalModel = transform2M44 transform ^. L._m33
-  GL.useProgram prog $ do
-    GL.uniformByName "mvp" mvp
-    GL.uniformByName "normal_model" normalModel
-  let vertexCount = meshVertexCount mesh
-  GL.drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
+  liftBase $ do
+    GL.useProgram mainProg $ do
+      GL.uniformByName "mvp" mvp
+      GL.uniformByName "normal_model" normalModel
+    draw ship
+  renderNormals <- asks argsNormals
+  liftBase . when renderNormals $ do
+    GL.useProgram normalsProg $
+      GL.uniformByName "mvp" mvp
+    draw ship
 
 renderCameraOrientation :: (HasResources s, MonadBaseControl IO m,
                             MonadState s m) => Camera -> m ()
@@ -180,7 +176,6 @@ renderAxis :: (HasResources s, MonadBaseControl IO m, MonadState s m) =>
               Float -> L.M44 Float -> m ()
 renderAxis scale mvp = do
   axisProgram <- Res.loadProgram axisProgramDesc
-  vao <- gets $ resVao . getResources
   axisVao <- gets $ resAxisVao . getResources
   liftBase $ do
     GL.bindVertexArray axisVao
@@ -189,17 +184,13 @@ renderAxis scale mvp = do
       GL.uniformByName "scale" scale
       GL.uniformByName "mvp" mvp
     glDrawArrays GL_POINTS 0 1
-    GL.bindVertexArray vao
 
 renderPlane :: (HasResources s, MonadBaseControl IO m, MonadState s m) => m ()
 renderPlane = do
   prog <- Res.loadProgram textureProgramDesc
-  planeVao <- gets $ resPlaneVao . getResources
-  vao <- gets $ resVao . getResources
+  Just plane <- Res.getDrawable "plane"
   liftBase $ do
-    GL.bindVertexArray planeVao
     let model = rotateLocal defaultTransform $ L.V3 90 0 0
     GL.useProgram prog $
       GL.uniformByName "mvp" $ transform2M44 model
-    GL.drawElements GL_TRIANGLES (6 :: Int) GL_UNSIGNED_SHORT nullPtr
-    GL.bindVertexArray vao
+    draw plane

@@ -9,6 +9,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Int (Int32)
+import Data.IntMap ((!))
 import Data.Set (Set)
 import qualified Data.Set as Set
 import System.IO (IOMode (..), hPrint, withFile)
@@ -26,7 +27,6 @@ import Hasgel.Game (GameState (..), PlayerCmd (..), Ticcmd, addTiccmd,
                     buildTiccmd, gameState, ticGame)
 import Hasgel.GL
 import Hasgel.Input
-import Hasgel.Mesh (Mesh (..), meshVertexIx)
 import Hasgel.Rendering
 import Hasgel.Resources
 import qualified Hasgel.SDL as MySDL
@@ -86,12 +86,6 @@ main =
     glViewport 0 0 800 600
     glEnable GL_CULL_FACE
     withResources $ \res -> do
-      bufs <- setVertexArray (resVao res) $ do
-        let mesh = resMesh res
-        attrib $ meshVertices mesh
-        attrib $ meshNormals mesh
-        attrib $ meshUvs mesh
-        indexBuffer $ meshVertexIx mesh
       glEnable GL_DEPTH_TEST
       args <- getArgs
       ticcmds <- case argsDemo args of
@@ -99,7 +93,6 @@ main =
                    _ -> return []
       world <- createWorld d res (gameState ticcmds)
       void $ execStateT (runReaderT loop args) world
-      deletes bufs
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
@@ -142,7 +135,7 @@ loop = do
     disp <- gets worldDisplay
     renderDisplay disp . FT.withFrameTimer $ do
       fbo <- gets $ resFbo . getResources
-      bindFramebuffer FramebufferTarget fbo $ do
+      void . bindFramebuffer FramebufferTarget fbo $ do
         clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
         clearDepthBuffer 1
         camera <- lift $ gets worldCamera
@@ -158,7 +151,7 @@ loop = do
         glViewport 0 0 800 600
       clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
       clearDepthBuffer 1
-      fboTex <- gets $ resFboTex . getResources
+      fboTex <- gets $ (! 0) . fbColorTextures . resFbo . getResources
       glBindTexture GL_TEXTURE_2D $ object fboTex
       renderPlane
       throwError
