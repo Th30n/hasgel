@@ -145,10 +145,14 @@ cubeRenderer camera transform = do
   let mvp = cameraViewProjection camera !*! transform2M44 transform
       -- Normal transform assumes uniform scaling.
       normalModel = transform2M44 transform ^. L._m33
+      mv = cameraView camera !*! transform2M44 transform
   liftBase $ do
     GL.useProgram mainProg $ do
       GL.uniformByName "mvp" mvp
       GL.uniformByName "normal_model" normalModel
+      GL.uniformByName "mv" mv
+      GL.uniformByName "mat.spec" $ (L.V3 0.8 0.8 0.8 :: L.V3 Float)
+      GL.uniformByName "mat.shine" (25 :: Float)
     draw ship
   renderNormals <- asks argsNormals
   liftBase . when renderNormals $ do

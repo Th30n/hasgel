@@ -37,6 +37,10 @@ instance UniformData Float where
   uniformv loc fs = liftIO . withArrayLen fs $ \n ->
     glUniform1fv (unwrapLocation loc) (fromIntegral n) . castPtr
 
+instance UniformData (L.V3 Float) where
+  uniformv loc vec = liftIO . withArrayLen vec $ \n ->
+    glUniform3fv (unwrapLocation loc) (fromIntegral n) . castPtr
+
 uniformByName :: (MonadIO m, UniformData a) => String -> a -> UsedProgram m ()
 uniformByName name v = do
   mbLoc <- getUniformLocation name
