@@ -10,6 +10,7 @@ import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Int (Int32)
 import Data.IntMap ((!))
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import System.IO (IOMode (..), hPrint, withFile)
@@ -86,7 +87,6 @@ main =
     glViewport 0 0 800 600
     glEnable GL_CULL_FACE
     withResources $ \res -> do
-      glEnable GL_DEPTH_TEST
       args <- getArgs
       ticcmds <- case argsDemo args of
                    Playback fp -> readDemo fp
@@ -136,6 +136,7 @@ loop = do
     renderDisplay disp . FT.withFrameTimer $ do
       fbo <- gets $ resFbo . getResources
       void . bindFramebuffer FramebufferTarget fbo $ do
+        glEnable GL_DEPTH_TEST
         clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
         clearDepthBuffer 1
         camera <- lift $ gets worldCamera
@@ -149,11 +150,11 @@ loop = do
         glViewport 0 0 100 100
         lift $ renderCameraOrientation camera
         glViewport 0 0 800 600
-      clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
-      clearDepthBuffer 1
+      -- Skip clearing draw buffer and depth testing for fullscreen quad.
+      glDisable GL_DEPTH_TEST
       fboTex <- gets $ (! 0) . fbColorTextures . resFbo . getResources
-      glBindTexture GL_TEXTURE_2D $ object fboTex
-      renderPlane
+      gamma <- fromMaybe defaultGamma <$> asks argsGamma
+      renderGamma gamma fboTex
       throwError
     displayFrameRate
     updateTime

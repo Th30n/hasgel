@@ -129,7 +129,7 @@ loadTexture file = do
   let w = fromIntegral $ SDL.surfaceW s
       h = fromIntegral $ SDL.surfaceH s
       pixels = SDL.surfacePixels s
-  glTexImage2D GL_TEXTURE_2D 0 GL_RGB w h 0 GL_BGR GL_UNSIGNED_BYTE pixels
+  glTexImage2D GL_TEXTURE_2D 0 GL_SRGB8 w h 0 GL_BGR GL_UNSIGNED_BYTE pixels
   glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_NEAREST
   glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_NEAREST
   SDL.freeSurface s

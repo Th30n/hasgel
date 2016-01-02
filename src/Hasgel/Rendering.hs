@@ -4,7 +4,7 @@ module Hasgel.Rendering (
   Camera(..), defaultCamera, viewForward, viewBack, viewRight, viewLeft,
   viewUp, viewDown,
   renderCameraOrientation, renderPlayer, renderPlayerShots, renderInvaders,
-  axisRenderer, renderPlane
+  axisRenderer, renderGamma, defaultGamma
 ) where
 
 import Control.Monad (when)
@@ -32,13 +32,16 @@ data Camera = Camera
   , cameraProjection :: L.M44 Float
   } deriving (Show)
 
+defaultGamma :: Float
+defaultGamma = 2.2
+
 mainProgramDesc :: Res.ProgramDesc
 mainProgramDesc = [("shaders/basic.vert", GL.VertexShader),
                    ("shaders/basic.frag", GL.FragmentShader)]
 
-textureProgramDesc :: Res.ProgramDesc
-textureProgramDesc = [("shaders/pass.vert", GL.VertexShader),
-                      ("shaders/texture.frag", GL.FragmentShader)]
+gammaProgramDesc :: Res.ProgramDesc
+gammaProgramDesc = [("shaders/pass.vert", GL.VertexShader),
+                    ("shaders/gamma.frag", GL.FragmentShader)]
 
 gouraudProgramDesc :: Res.ProgramDesc
 gouraudProgramDesc = [("shaders/gouraud.vert", GL.VertexShader),
@@ -185,12 +188,18 @@ renderAxis scale mvp = do
       GL.uniformByName "mvp" mvp
     glDrawArrays GL_POINTS 0 1
 
-renderPlane :: (HasResources s, MonadBaseControl IO m, MonadState s m) => m ()
-renderPlane = do
-  prog <- Res.loadProgram textureProgramDesc
+-- | Post processing effect. Renders a fullscreen quad from given texture and
+-- applies gamma correction.
+renderGamma :: (HasResources s, MonadBaseControl IO m, MonadState s m) =>
+               Float -> GL.Texture -> m ()
+renderGamma gamma texture = do
+  prog <- Res.loadProgram gammaProgramDesc
   Just plane <- Res.getDrawable "plane"
   liftBase $ do
+    glActiveTexture GL_TEXTURE0
+    glBindTexture GL_TEXTURE_2D $ GL.object texture
     let model = rotateLocal defaultTransform $ L.V3 90 0 0
-    GL.useProgram prog $
+    GL.useProgram prog $ do
       GL.uniformByName "mvp" $ transform2M44 model
+      GL.uniformByName "gamma" gamma
     draw plane
