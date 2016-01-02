@@ -34,6 +34,7 @@ type ProgramDesc = [ShaderDesc]
 
 data Resources = Resources
   { resTex :: GL.Texture
+  , resLaserTex :: GL.Texture
   , timeQueries :: [GL.Query]
   , resPrograms :: Programs
   , resDrawables :: M.Map String Drawable
@@ -73,6 +74,7 @@ withResources = bracket loadResources freeResources
 loadResources :: IO Resources
 loadResources = do
     tex <- loadTexture "share/models/player-ship-diffuse.bmp"
+    laserTex <- loadTexture "share/gfx/laser-shot.bmp"
     qs <- GL.gens 4
     eitherMesh <- loadHmd "share/models/player-ship.hmd"
     axisVao <- GL.gen
@@ -86,7 +88,7 @@ loadResources = do
     rs <- mesh2Drawable mesh
     let rsMap' = M.insert "player-ship" rs rsMap
     fbo <- createFbo
-    pure Resources { resTex = tex, timeQueries = qs,
+    pure Resources { resTex = tex, resLaserTex = laserTex, timeQueries = qs,
                      resPrograms = emptyPrograms,
                      resAxisVao = axisVao,
                      resDrawables = rsMap', resFbo = fbo }
@@ -94,6 +96,7 @@ loadResources = do
 freeResources :: Resources -> IO ()
 freeResources res = do
   GL.delete $ resTex res
+  GL.delete $ resLaserTex res
   GL.deletes $ timeQueries res
   GL.delete $ resAxisVao res
   mapM_ freeDrawable $ resDrawables res

@@ -140,9 +140,6 @@ loop = do
         clearBufferfv GL_COLOR 0 [0, 0, 0, 1]
         clearDepthBuffer 1
         camera <- lift $ gets worldCamera
-        tex <- lift . gets $ resTex . getResources
-        glActiveTexture GL_TEXTURE0
-        glBindTexture GL_TEXTURE_2D $ object tex
         lift $ mapM_ ($ camera) [renderPlayer,
                                  renderPlayerShots,
                                  renderInvaders,

@@ -10,6 +10,7 @@ module Hasgel.Rendering (
 import Control.Monad (when)
 import Control.Arrow ((&&&))
 import Control.Lens ((.~), (^.))
+import Control.Monad (forM_)
 import Control.Monad.Base (MonadBase (..))
 import Control.Monad.Reader (MonadReader, asks)
 import Control.Monad.State (MonadState(..), gets)
@@ -46,6 +47,11 @@ gammaProgramDesc = [("shaders/pass.vert", GL.VertexShader),
 gouraudProgramDesc :: Res.ProgramDesc
 gouraudProgramDesc = [("shaders/gouraud.vert", GL.VertexShader),
                       ("shaders/gouraud.frag", GL.FragmentShader)]
+
+spriteProgramDesc :: Res.ProgramDesc
+spriteProgramDesc = [("shaders/billboard.vert", GL.VertexShader),
+                     ("shaders/billboard.geom", GL.GeometryShader),
+                     ("shaders/billboard.frag", GL.FragmentShader)]
 
 normalsProgramDesc :: Res.ProgramDesc
 normalsProgramDesc = [("shaders/basic.vert", GL.VertexShader),
@@ -121,7 +127,21 @@ renderPlayerShots :: (HasResources s, HasSimulation s GameState,
                      Camera -> m ()
 renderPlayerShots camera = do
   playerShots <- gets $ gPlayerShots . simState . getSimulation
-  mapM_ (cubeRenderer camera) playerShots
+  forM_ playerShots $ \transform -> do
+    spriteProgram <- Res.loadProgram spriteProgramDesc
+    vao <- gets $ resAxisVao . getResources
+    texture <- gets $ resLaserTex . getResources
+    liftBase $ do
+      GL.bindVertexArray vao
+      GL.vertexAttrib3f (GL.Index 0) 0 0 0
+      glActiveTexture GL_TEXTURE0
+      glBindTexture GL_TEXTURE_2D $ GL.object texture
+      let mv = cameraView camera !*! transform2M44 transform
+      GL.useProgram spriteProgram $ do
+        GL.uniformByName "mv" mv
+        GL.uniformByName "proj" $ cameraProjection camera
+        GL.uniformByName "size" $ transformScale transform ^. L._x
+      glDrawArrays GL_POINTS 0 1
 
 renderInvaders :: (HasResources s, HasSimulation s GameState,
                    MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
@@ -142,11 +162,14 @@ cubeRenderer camera transform = do
   mainProg <- Res.loadProgram gouraudProgramDesc
   normalsProg <- Res.loadProgram normalsProgramDesc
   Just ship <- Res.getDrawable "player-ship"
+  tex <- gets $ resTex . getResources
   let mvp = cameraViewProjection camera !*! transform2M44 transform
       -- Normal transform assumes uniform scaling.
       normalModel = transform2M44 transform ^. L._m33
       mv = cameraView camera !*! transform2M44 transform
   liftBase $ do
+    glActiveTexture GL_TEXTURE0
+    glBindTexture GL_TEXTURE_2D $ GL.object tex
     GL.useProgram mainProg $ do
       GL.uniformByName "mvp" mvp
       GL.uniformByName "normal_model" normalModel

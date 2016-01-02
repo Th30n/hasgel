@@ -187,7 +187,7 @@ createInvaders = let fstRow x = invader x 15
 
 shotTransform :: Transform
 shotTransform =
-  let transform = defaultTransform { transformScale = L.V3 0.25 0.25 0.25 }
+  let transform = defaultTransform { transformScale = L.V3 0.3 0.3 0.3 }
   in rotateLocal transform $ L.V3 90 0 0
 
 invader :: Float -> Float -> Transform
