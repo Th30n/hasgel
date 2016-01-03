@@ -38,7 +38,6 @@ data Resources = Resources
   , timeQueries :: [GL.Query]
   , resPrograms :: Programs
   , resDrawables :: M.Map String Drawable
-  , resAxisVao :: GL.VertexArray
   , resFbo :: GL.Framebuffer
   }
 
@@ -77,7 +76,6 @@ loadResources = do
     laserTex <- loadTexture "share/gfx/laser-shot.bmp"
     qs <- GL.gens 4
     eitherMesh <- loadHmd "share/models/player-ship.hmd"
-    axisVao <- GL.gen
     eitherRs <- setPlaneVao
     rsMap <- case eitherRs of
             Left err -> putStrLn err >> pure M.empty
@@ -86,11 +84,12 @@ loadResources = do
               Left err -> putStrLn err >> pure cube
               Right m -> pure m
     rs <- mesh2Drawable mesh
-    let rsMap' = M.insert "player-ship" rs rsMap
+    pointDrawable <- createPointDrawable
+    let rsMap' = M.insert "point" pointDrawable $
+                 M.insert "player-ship" rs rsMap
     fbo <- createFbo
     pure Resources { resTex = tex, resLaserTex = laserTex, timeQueries = qs,
                      resPrograms = emptyPrograms,
-                     resAxisVao = axisVao,
                      resDrawables = rsMap', resFbo = fbo }
 
 freeResources :: Resources -> IO ()
@@ -98,7 +97,6 @@ freeResources res = do
   GL.delete $ resTex res
   GL.delete $ resLaserTex res
   GL.deletes $ timeQueries res
-  GL.delete $ resAxisVao res
   mapM_ freeDrawable $ resDrawables res
   GL.delete $ resFbo res
   void . freePrograms $ resPrograms res

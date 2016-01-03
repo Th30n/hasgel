@@ -1,5 +1,5 @@
 module Hasgel.Drawable (
-  Drawable(draw), freeDrawable, mesh2Drawable
+  Drawable(..), createPointDrawable, mesh2Drawable
 ) where
 
 import Foreign (nullPtr)
@@ -10,12 +10,20 @@ import Hasgel.Mesh
 import Graphics.GL.Core45
 
 data Drawable = Drawable
-  { dVao :: GL.VertexArray
+  { freeDrawable :: IO ()
   , draw :: IO ()
   }
 
-freeDrawable :: Drawable -> IO ()
-freeDrawable = GL.delete . dVao
+createPointDrawable :: IO Drawable
+createPointDrawable = do
+  vao <- (GL.gen >>=) $ flip GL.setVertexArray $
+    GL.attrib3f 0 0 0
+  pure Drawable {
+    freeDrawable = GL.delete vao,
+    draw = do
+        GL.bindVertexArray vao
+        glDrawArrays GL_POINTS 0 1
+    }
 
 mesh2Drawable :: Mesh -> IO Drawable
 mesh2Drawable mesh = do
@@ -26,9 +34,8 @@ mesh2Drawable mesh = do
     GL.indexBuffer $ meshVertexIx mesh
   let vertexCount = meshVertexCount mesh
   pure Drawable {
-    dVao = vao,
+    freeDrawable = GL.delete vao,
     draw = do
         GL.bindVertexArray vao
         GL.drawElements GL_TRIANGLES vertexCount GL_UNSIGNED_SHORT nullPtr
     }
-

@@ -134,11 +134,9 @@ renderPlayerShots camera = do
   playerShots <- gets $ gPlayerShots . simState . getSimulation
   forM_ playerShots $ \transform -> do
     spriteProgram <- Res.loadProgram spriteProgramDesc
-    vao <- gets $ resAxisVao . getResources
+    Just point <- Res.getDrawable "point"
     texture <- gets $ resLaserTex . getResources
     liftBase $ do
-      GL.bindVertexArray vao
-      GL.vertexAttrib3f (GL.Index 0) 0 0 0
       glActiveTexture GL_TEXTURE0
       glBindTexture GL_TEXTURE_2D $ GL.object texture
       let mv = cameraView camera !*! transform2M44 transform
@@ -146,7 +144,7 @@ renderPlayerShots camera = do
         GL.uniformByName "mv" mv
         GL.uniformByName "proj" $ cameraProjection camera
         GL.uniformByName "size" $ transformScale transform ^. L._x
-      glDrawArrays GL_POINTS 0 1
+      draw point
 
 renderInvaders :: (HasResources s, HasSimulation s GameState,
                    MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
@@ -230,14 +228,12 @@ renderAxis :: (HasResources s, MonadBaseControl IO m, MonadState s m) =>
               Float -> L.M44 Float -> m ()
 renderAxis scale mvp = do
   axisProgram <- Res.loadProgram axisProgramDesc
-  axisVao <- gets $ resAxisVao . getResources
+  Just point <- Res.getDrawable "point"
   liftBase $ do
-    GL.bindVertexArray axisVao
-    GL.vertexAttrib3f (GL.Index 0) 0 0 0
     GL.useProgram axisProgram $ do
       GL.uniformByName "scale" scale
       GL.uniformByName "mvp" mvp
-    glDrawArrays GL_POINTS 0 1
+    draw point
 
 -- | Post processing effect. Renders a fullscreen quad from given texture and
 -- applies gamma correction.
