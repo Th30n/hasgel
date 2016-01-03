@@ -7,21 +7,22 @@ module Hasgel.Rendering (
   axisRenderer, renderGamma, defaultGamma
 ) where
 
-import Control.Monad (when)
 import Control.Arrow ((&&&))
 import Control.Lens ((.~), (^.))
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
 import Control.Monad.Base (MonadBase (..))
 import Control.Monad.Reader (MonadReader, asks)
 import Control.Monad.State (MonadState(..), gets)
 import Control.Monad.Trans.Control (MonadBaseControl (..))
+import Data.Maybe (fromMaybe)
+
 import Graphics.GL.Core45
 import Linear ((!*!))
 import qualified Linear as L
 
 import Hasgel.Args (Args (..))
-import Hasgel.Simulation (Simulation(..), HasSimulation(..))
-import Hasgel.Game (GameState(..), Player(..))
+import Hasgel.Simulation (Simulation(..), HasSimulation(..), Time(..), millis2Sec)
+import Hasgel.Game (GameState(..), Player(..), Invader(..))
 import Hasgel.Transform
 import Hasgel.Drawable
 import qualified Hasgel.GL as GL
@@ -47,6 +48,10 @@ gammaProgramDesc = [("shaders/pass.vert", GL.VertexShader),
 gouraudProgramDesc :: Res.ProgramDesc
 gouraudProgramDesc = [("shaders/gouraud.vert", GL.VertexShader),
                       ("shaders/gouraud.frag", GL.FragmentShader)]
+
+explodeProgramDesc :: Res.ProgramDesc
+explodeProgramDesc = ("shaders/explode.geom", GL.GeometryShader) :
+                     gouraudProgramDesc
 
 spriteProgramDesc :: Res.ProgramDesc
 spriteProgramDesc = [("shaders/billboard.vert", GL.VertexShader),
@@ -147,8 +152,20 @@ renderInvaders :: (HasResources s, HasSimulation s GameState,
                    MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
                   Camera -> m ()
 renderInvaders camera = do
-  invaders <- gets $ gInvaders . simState . getSimulation
-  mapM_ (cubeRenderer camera) invaders
+  sim <- gets getSimulation
+  let invaders = gInvaders . simState $ sim
+      exploding = gExploded . simState $ sim
+  mapM_ (cubeRenderer camera . iTransform) invaders
+  forM_ exploding $ \invader -> do
+    mainProg <- Res.loadProgram explodeProgramDesc
+    let time = timeCurrent . simTime $ sim
+        dt = fromMaybe 0 $ (time -) <$> iExplodeTime invader
+        transform = iTransform invader
+        exFactor :: Float
+        exFactor = 8 * millis2Sec dt
+    liftBase . GL.useProgram mainProg $
+      GL.uniformByName "explode_factor" exFactor
+    renderShip mainProg camera transform
 
 renderPlayer :: (HasResources s, HasSimulation s GameState,
                  MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
@@ -160,7 +177,19 @@ cubeRenderer :: (HasResources s, HasSimulation s GameState,
                 Camera -> Transform -> m ()
 cubeRenderer camera transform = do
   mainProg <- Res.loadProgram gouraudProgramDesc
+  renderShip mainProg camera transform
   normalsProg <- Res.loadProgram normalsProgramDesc
+  Just ship <- Res.getDrawable "player-ship"
+  let mvp = cameraViewProjection camera !*! transform2M44 transform
+  renderNormals <- asks argsNormals
+  liftBase . when renderNormals $ do
+    GL.useProgram normalsProg $
+      GL.uniformByName "mvp" mvp
+    draw ship
+
+renderShip :: (HasResources s, MonadBase IO m, MonadState s m) =>
+              GL.Program -> Camera -> Transform -> m ()
+renderShip program camera transform = do
   Just ship <- Res.getDrawable "player-ship"
   tex <- gets $ resTex . getResources
   let mvp = cameraViewProjection camera !*! transform2M44 transform
@@ -170,17 +199,12 @@ cubeRenderer camera transform = do
   liftBase $ do
     glActiveTexture GL_TEXTURE0
     glBindTexture GL_TEXTURE_2D $ GL.object tex
-    GL.useProgram mainProg $ do
+    GL.useProgram program $ do
       GL.uniformByName "mvp" mvp
       GL.uniformByName "normal_model" normalModel
       GL.uniformByName "mv" mv
-      GL.uniformByName "mat.spec" $ (L.V3 0.8 0.8 0.8 :: L.V3 Float)
+      GL.uniformByName "mat.spec" (L.V3 0.8 0.8 0.8 :: L.V3 Float)
       GL.uniformByName "mat.shine" (25 :: Float)
-    draw ship
-  renderNormals <- asks argsNormals
-  liftBase . when renderNormals $ do
-    GL.useProgram normalsProg $
-      GL.uniformByName "mvp" mvp
     draw ship
 
 renderCameraOrientation :: (HasResources s, MonadBaseControl IO m,

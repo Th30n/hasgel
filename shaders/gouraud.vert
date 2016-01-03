@@ -32,10 +32,17 @@ uniform material_t mat = { vec3(1.0f),
 
 out VS_OUT
 {
+    // Used in fragment shader.
     vec2 uv;
     vec3 diff;
     vec3 spec;
 } vs_out;
+
+out GS_IN
+{
+    vec3 position; // Model position.
+    vec3 normal; // Model normal.
+} gs_in;
 
 void main()
 {
@@ -52,4 +59,6 @@ void main()
     vs_out.uv = uv;
     vs_out.diff = diff;
     vs_out.spec = spec;
+    gs_in.position = position;
+    gs_in.normal = normal;
 }

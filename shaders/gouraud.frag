@@ -4,6 +4,7 @@ layout (binding = 0) uniform sampler2D tex_diffuse;
 
 in VS_OUT
 {
+    // Used in fragment shader.
     vec2 uv;
     vec3 diff;
     vec3 spec;

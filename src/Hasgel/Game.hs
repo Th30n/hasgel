@@ -1,9 +1,11 @@
 module Hasgel.Game (
-  GameState(..), Ticcmd, PlayerCmd(..), Player (..),
+  GameState(..), Ticcmd, PlayerCmd(..), Player (..), Invader(..),
   gameState, ticGame, addTiccmd, buildTiccmd
 ) where
 
-import Control.Arrow (second)
+import Control.Arrow (first, second)
+import Control.Monad.State
+import Data.Maybe (fromMaybe)
 
 import Control.Lens ((^.))
 import qualified Linear as L
@@ -19,13 +21,20 @@ data GameState = GameState
   , gOldTiccmds :: [Ticcmd] -- ^ Processed commands, used for recording.
   , gPlayer :: Player
   , gPlayerShots :: [Transform]
-  , gInvaders :: [Transform]
+  , gInvaders :: [Invader]
+  , gExploded :: [Invader]
   , gInvaderDir :: InvaderDir
   , gOldInvaderDir :: InvaderDir
   , gStartMoveDown :: !Milliseconds
   }
 
 data InvaderDir = DirLeft | DirRight | DirDown deriving (Eq, Show)
+
+data Invader = Invader
+  { iTransform :: Transform
+    -- | Time when the invader was shot and started exploding.
+  , iExplodeTime :: Maybe Milliseconds
+  }
 
 data Player = Player
   { playerTransform :: Transform
@@ -78,41 +87,49 @@ ticGame time = ticInvaders time . ticShots time . ticPlayer time
 ticShots :: Time -> GameState -> GameState
 ticShots time gs
   | null (gPlayerShots gs) = gs
-  | otherwise = let shotSpeed = 15 * millis2Sec (timeDelta time)
-                    shots = gPlayerShots gs
-                    ships = gInvaders gs
-                    (shots', ships') = moveShots shotSpeed shots ships
-                in gs { gPlayerShots = shots', gInvaders = ships' }
+  | otherwise =
+      let shots = gPlayerShots gs
+          ships = gInvaders gs
+          ((shots', exs'), ships') = runState (moveShots time shots) ships
+      in gs { gPlayerShots = shots', gInvaders = ships',
+              gExploded = gExploded gs ++ exs' }
 
-moveShots :: Float -> [Transform] -> [Transform] -> ([Transform], [Transform])
-moveShots _ [] ships = ([], ships)
-moveShots dy shots [] = (shotMove dy <$> shots, [])
-moveShots dy (shot:shots) ships =
-  case tryMove shot (L.V3 0 dy 0) ships of
-    (shot', Nothing) -> let (shots', ships') = moveShots dy shots ships
-                        in (shot':shots', ships')
-    (_, Just i) -> let ships' = uncurry (++) $ second tail $ splitAt i ships
-                   in moveShots dy shots ships'
+moveShots :: Time -> [Transform] -> State [Invader] ([Transform], [Invader])
+moveShots _ [] = pure ([], [])
+moveShots time (shot:shots) = do
+  ships <- get
+  let speed = 15 * millis2Sec (timeDelta time)
+  case tryMove shot (L.V3 0 speed 0) (map iTransform ships) of
+    -- Nothing was hit.
+    (shot', Nothing) -> first (shot':) <$> moveShots time shots
+    -- Hit invader at index 'i'.
+    (_, Just i) -> do
+      (prev, ex:next) <- splitAt i <$> get
+      put $ prev ++ next
+      let ex' = ex { iExplodeTime = Just $ timeCurrent time }
+      second (ex':) <$> moveShots time shots
 
 ticInvaders :: Time -> GameState -> GameState
 ticInvaders time gs =
   let shipSpeed = 2.5 * millis2Sec (timeDelta time)
-      ships = gInvaders gs
+      ships = map iTransform $ gInvaders gs
       (changeDir, ships') = case gInvaderDir gs of
                               DirLeft -> invaderHorMove (-shipSpeed) ships
                               DirRight -> invaderHorMove shipSpeed ships
                               DirDown ->
                                 invaderMoveDown time (gStartMoveDown gs) ships
-  in if not changeDir
-     then gs { gInvaders = ships' }
-     else case gInvaderDir gs of
-            DirDown -> let newDir = if gOldInvaderDir gs == DirLeft
-                                    then DirRight
-                                    else DirLeft
-                       in gs { gInvaderDir = newDir }
-            dir -> gs { gInvaderDir = DirDown,
-                        gOldInvaderDir = dir,
-                        gStartMoveDown = timeCurrent time }
+      gs' = if not changeDir
+            then gs { gInvaders = map (flip Invader Nothing) ships' }
+            else case gInvaderDir gs of
+                   DirDown -> let newDir = if gOldInvaderDir gs == DirLeft
+                                           then DirRight
+                                           else DirLeft
+                              in gs { gInvaderDir = newDir }
+                   dir -> gs { gInvaderDir = DirDown,
+                               gOldInvaderDir = dir,
+                               gStartMoveDown = timeCurrent time }
+      notForDelete inv = (timeCurrent time - fromMaybe 0 (iExplodeTime inv)) < 2000
+      in gs' { gExploded = filter notForDelete $ gExploded gs }
 
 type ChangeDir = Bool
 
@@ -173,13 +190,10 @@ playerShoot time player shots True
                 in (player { playerShotTime = shootCooldown + timeCurrent time },
                     newShot:shots)
 
-shotMove :: Float -> Transform -> Transform
-shotMove dy shotPos = translate shotPos $ L.V3 0 dy 0
-
 emptyTiccmd :: Ticcmd
 emptyTiccmd = Ticcmd { cmdMove = 0, cmdShoot = False }
 
-createInvaders :: [Transform]
+createInvaders :: [Invader]
 createInvaders = let fstRow x = invader x 15
                      sndRow x = invader x 18
                      xs = [-4, 0, 4]
@@ -190,10 +204,11 @@ shotTransform =
   let transform = defaultTransform { transformScale = L.V3 0.3 0.3 0.3 }
   in rotateLocal transform $ L.V3 90 0 0
 
-invader :: Float -> Float -> Transform
+invader :: Float -> Float -> Invader
 invader x y =
   let transform = defaultTransform { transformPosition = L.V3 x y 0 }
-  in rotateLocal transform $ L.V3 90 0 0
+  in Invader { iTransform = rotateLocal transform $ L.V3 90 0 0,
+               iExplodeTime = Nothing }
 
 gameState :: [Ticcmd] -> GameState
 gameState ticcmds =
@@ -202,6 +217,6 @@ gameState ticcmds =
                         playerShotTime = 0 }
   in GameState { gTiccmds = ticcmds, gOldTiccmds = [],
                  gPlayer = player, gPlayerShots = [],
-                 gInvaders = createInvaders,
+                 gInvaders = createInvaders, gExploded = [],
                  gInvaderDir = DirRight, gOldInvaderDir = DirLeft,
                  gStartMoveDown = 0 }
