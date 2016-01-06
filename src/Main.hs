@@ -14,6 +14,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import System.IO (IOMode (..), hPrint, withFile)
+import System.Random (mkStdGen)
 import Text.Printf (printf)
 
 import Graphics.GL.Core45
@@ -91,7 +92,8 @@ main =
       ticcmds <- case argsDemo args of
                    Playback fp -> readDemo fp
                    _ -> return []
-      world <- createWorld d res (gameState ticcmds)
+      let seed = 0
+      world <- createWorld d res $ gameState ticcmds (mkStdGen seed)
       void $ execStateT (runReaderT loop args) world
 
 withDisplay :: (Display -> IO a) -> IO a

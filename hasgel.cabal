@@ -39,6 +39,7 @@ executable hasgel
     , deepseq >= 1.4
     , array >= 0.5
     , containers >= 0.5
+    , random >= 1.1
   default-language: Haskell2010
   ghc-options: -Wall -fwarn-tabs -rtsopts -O2
   ghc-prof-options: -fprof-auto
@@ -72,6 +73,7 @@ library
     , deepseq >= 1.4
     , array >= 0.5
     , containers >= 0.5
+    , random >= 1.1
 
 executable obj2hmd
   main-is: ObjToHmd.hs

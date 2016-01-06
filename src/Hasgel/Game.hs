@@ -6,6 +6,7 @@ module Hasgel.Game (
 import Control.Arrow (first, second)
 import Control.Monad.State
 import Data.Maybe (fromMaybe)
+import System.Random (StdGen, randomR)
 
 import Control.Lens ((^.))
 import qualified Linear as L
@@ -13,7 +14,7 @@ import qualified Linear as L
 import Hasgel.Game.Movement (tryMove)
 import Hasgel.Simulation (Milliseconds, Time (..), millis2Sec)
 import Hasgel.Transform (Transform (..), defaultTransform, rotateLocal,
-                         translate)
+                         transformForward, translate)
 
 -- | State of the game.
 data GameState = GameState
@@ -26,6 +27,7 @@ data GameState = GameState
   , gInvaderDir :: InvaderDir
   , gOldInvaderDir :: InvaderDir
   , gStartMoveDown :: !Milliseconds
+  , gShotRandom :: StdGen
   }
 
 data InvaderDir = DirLeft | DirRight | DirDown deriving (Eq, Show)
@@ -98,8 +100,8 @@ moveShots :: Time -> [Transform] -> State [Invader] ([Transform], [Invader])
 moveShots _ [] = pure ([], [])
 moveShots time (shot:shots) = do
   ships <- get
-  let speed = 15 * millis2Sec (timeDelta time)
-  case tryMove shot (L.V3 0 speed 0) (map iTransform ships) of
+  let speed = 15 * millis2Sec (timeDelta time) * transformForward shot
+  case tryMove shot speed (map iTransform ships) of
     -- Nothing was hit.
     (shot', Nothing) -> first (shot':) <$> moveShots time shots
     -- Hit invader at index 'i'.
@@ -109,33 +111,44 @@ moveShots time (shot:shots) = do
       let ex' = ex { iExplodeTime = Just $ timeCurrent time }
       second (ex':) <$> moveShots time shots
 
+invaderFireRate :: Milliseconds
+invaderFireRate = 500
+
 ticInvaders :: Time -> GameState -> GameState
-ticInvaders time gs =
-  let shipSpeed = 2.5 * millis2Sec (timeDelta time)
-      ships = map iTransform $ gInvaders gs
-      (changeDir, ships') = case gInvaderDir gs of
-                              DirLeft -> invaderHorMove (-shipSpeed) ships
-                              DirRight -> invaderHorMove shipSpeed ships
-                              DirDown ->
-                                invaderMoveDown time (gStartMoveDown gs) ships
-      gs' = if not changeDir
-            then gs { gInvaders = map (flip Invader Nothing) ships' }
-            else case gInvaderDir gs of
-                   DirDown -> let newDir = if gOldInvaderDir gs == DirLeft
-                                           then DirRight
-                                           else DirLeft
-                              in gs { gInvaderDir = newDir }
-                   dir -> gs { gInvaderDir = DirDown,
-                               gOldInvaderDir = dir,
-                               gStartMoveDown = timeCurrent time }
-      notForDelete inv = (timeCurrent time - fromMaybe 0 (iExplodeTime inv)) < 2000
-      in gs' { gExploded = filter notForDelete $ gExploded gs }
+ticInvaders time = execState $ do
+  modify $ moveInvaders time
+  let notForDelete inv = (timeCurrent time - fromMaybe 0 (iExplodeTime inv)) < 2000
+  modify $ \gs -> gs { gExploded = filter notForDelete $ gExploded gs }
+  when (timeCurrent time `mod` invaderFireRate == 0) $
+    modify $ \gs -> let (shots, rng) = invaderShoot (gInvaders gs) (gShotRandom gs)
+                    in gs { gPlayerShots = shots ++ gPlayerShots gs,
+                            gShotRandom = rng }
 
 type ChangeDir = Bool
 
 -- | Move down for this amount of milliseconds.
 moveDownTime :: Milliseconds
 moveDownTime = 200
+
+moveInvaders :: Time -> GameState -> GameState
+moveInvaders time gs =
+  let shipSpeed = 2.5 * millis2Sec (timeDelta time)
+      transforms = map iTransform $ gInvaders gs
+      (changeDir, ships) = case gInvaderDir gs of
+                              DirLeft -> invaderHorMove (-shipSpeed) transforms
+                              DirRight -> invaderHorMove shipSpeed transforms
+                              DirDown ->
+                                invaderMoveDown time (gStartMoveDown gs) transforms
+  in if not changeDir
+     then gs { gInvaders = map (flip Invader Nothing) ships }
+     else case gInvaderDir gs of
+            DirDown -> let newDir = if gOldInvaderDir gs == DirLeft
+                                    then DirRight
+                                    else DirLeft
+                       in gs { gInvaderDir = newDir }
+            dir -> gs { gInvaderDir = DirDown,
+                        gOldInvaderDir = dir,
+                        gStartMoveDown = timeCurrent time }
 
 -- | Move invaders vertically down. Sets the 'ChangeDir' to 'True' when the
 -- invaders have been moving down for 'moveDownTime'.
@@ -162,6 +175,15 @@ invaderMove dx ship = if outside then (True, ship) else (False, ship')
   where ship' = translate ship $ L.V3 dx 0 0
         outside = not $ inGameBounds ship'
 
+-- | Spawn shots for invader based on random generator.
+invaderShoot :: [Invader] -> StdGen -> ([Transform], StdGen)
+invaderShoot invaders = runState (foldM go [] invaders)
+  where go shots inv = do
+          chance <- state $ randomR (0, 100)
+          pure $ if chance < (90 :: Int)
+                 then shots
+                 else mkShot (iTransform inv) : shots
+
 -- | Maximum and minimum X coordinate of the game area.
 gameBoundsX :: Float
 gameBoundsX = 10
@@ -185,10 +207,8 @@ playerShoot _ player shots False = (player, shots)
 playerShoot time player shots True
   | timeCurrent time < playerShotTime player = (player, shots)
   | otherwise = let trans = playerTransform player
-                    shotPos = L.V3 0 1 0 + transformPosition trans
-                    newShot = shotTransform { transformPosition = shotPos }
                 in (player { playerShotTime = shootCooldown + timeCurrent time },
-                    newShot:shots)
+                    mkShot trans : shots)
 
 emptyTiccmd :: Ticcmd
 emptyTiccmd = Ticcmd { cmdMove = 0, cmdShoot = False }
@@ -199,10 +219,12 @@ createInvaders = let fstRow x = invader x 15
                      xs = [-4, 0, 4]
                  in map fstRow xs ++ map sndRow xs
 
-shotTransform :: Transform
-shotTransform =
-  let transform = defaultTransform { transformScale = L.V3 0.3 0.3 0.3 }
-  in rotateLocal transform $ L.V3 90 0 0
+-- | Create a shot transform in front of the given source transform.
+mkShot :: Transform -> Transform
+mkShot source =
+  let transform = source { transformScale = L.V3 0.3 0.3 0.3 }
+      pos = 2 * transformForward source
+  in translate transform pos
 
 invader :: Float -> Float -> Invader
 invader x y =
@@ -210,8 +232,8 @@ invader x y =
   in Invader { iTransform = rotateLocal transform $ L.V3 90 0 0,
                iExplodeTime = Nothing }
 
-gameState :: [Ticcmd] -> GameState
-gameState ticcmds =
+gameState :: [Ticcmd] -> StdGen -> GameState
+gameState ticcmds shotGen =
   let player = Player { playerTransform =
                           rotateLocal defaultTransform (L.V3 90 180 0),
                         playerShotTime = 0 }
@@ -219,4 +241,4 @@ gameState ticcmds =
                  gPlayer = player, gPlayerShots = [],
                  gInvaders = createInvaders, gExploded = [],
                  gInvaderDir = DirRight, gOldInvaderDir = DirLeft,
-                 gStartMoveDown = 0 }
+                 gStartMoveDown = 0, gShotRandom = shotGen }
