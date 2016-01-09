@@ -96,7 +96,7 @@ playerMove dv = do
 
 playerShoot :: Time -> State GameState ()
 playerShoot time = do
-  (player, shots) <- playerShoot' time <$> gets gPlayer <*> gets gShots
+  (player, shots) <- gets $ playerShoot' time <$> gPlayer <*> gShots
   modify $ \gs -> gs { gPlayer = player, gShots = shots }
 
 ticGame :: Time -> GameState -> GameState

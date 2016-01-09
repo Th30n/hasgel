@@ -7,7 +7,6 @@ module Hasgel.Rendering (
   axisRenderer, renderGamma, defaultGamma
 ) where
 
-import Control.Arrow ((&&&))
 import Control.Lens ((.~), (^.))
 import Control.Monad (forM_, when)
 import Control.Monad.Base (MonadBase (..))
@@ -124,10 +123,10 @@ cameraView camera =
 
 -- | Return the view projection matrix for the given camera.
 cameraViewProjection :: Camera -> L.M44 Float
-cameraViewProjection = uncurry (!*!) . (cameraProjection &&& cameraView)
+cameraViewProjection = (!*!) <$> cameraProjection <*> cameraView
 
 renderShots :: (HasResources s, HasSimulation s GameState, MonadState s m,
-                MonadBaseControl IO m, MonadReader Args m) => Camera -> m ()
+                MonadBaseControl IO m) => Camera -> m ()
 renderShots camera = do
   shots <- gets $ gShots . simState . getSimulation
   forM_ shots $ \transform -> do
@@ -171,9 +170,8 @@ renderPlayer camera = do
       let time = timeCurrent . simTime $ sim
       explodingShipRenderer camera transform (time - explodeTime)
 
-shipRenderer :: (HasResources s, HasSimulation s GameState,
-                 MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
-                Camera -> Transform -> m ()
+shipRenderer :: (HasResources s, MonadBaseControl IO m, MonadState s m,
+                 MonadReader Args m) => Camera -> Transform -> m ()
 shipRenderer camera transform = do
   mainProg <- Res.loadProgram gouraudProgramDesc
   renderShip mainProg camera transform
