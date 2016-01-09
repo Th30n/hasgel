@@ -17,9 +17,9 @@ maxSpeed = 0.25
 
 -- | Returns the new position and the index of the colliding object when moving
 -- for the given velocity.
-tryMove :: Transform -> L.V3 Float -> [Transform] -> (Transform, Maybe Int)
-tryMove mobj speed [] = (translate mobj speed, Nothing)
-tryMove mobj speed blockers =
+tryMove :: [Transform] -> Transform -> L.V3 Float -> (Transform, Maybe Int)
+tryMove [] mobj speed = (translate mobj speed, Nothing)
+tryMove blockers mobj speed =
   case clampSpeed of
     -- Speed is below maximum, move to destination.
     (speed', Nothing) -> tryMove' speed'
@@ -27,7 +27,7 @@ tryMove mobj speed blockers =
     (speed', Just remSpeed) ->
       case tryMove' speed' of
         -- No collision, continue moving.
-        (mobj', Nothing) -> tryMove mobj' remSpeed blockers
+        (mobj', Nothing) -> tryMove blockers mobj' remSpeed
         -- Collision, return the result.
         colRes -> colRes
   where clampSpeed = let L.V3 (x, mx) (y, my) (z, mz) = clampComp <$> speed

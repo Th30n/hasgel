@@ -143,7 +143,7 @@ loop = do
         clearDepthBuffer 1
         camera <- lift $ gets worldCamera
         lift $ mapM_ ($ camera) [renderPlayer,
-                                 renderPlayerShots,
+                                 renderShots,
                                  renderInvaders,
                                  axisRenderer]
         glViewport 0 0 100 100

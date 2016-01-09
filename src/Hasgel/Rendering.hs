@@ -3,7 +3,7 @@
 module Hasgel.Rendering (
   Camera(..), defaultCamera, viewForward, viewBack, viewRight, viewLeft,
   viewUp, viewDown,
-  renderCameraOrientation, renderPlayer, renderPlayerShots, renderInvaders,
+  renderCameraOrientation, renderPlayer, renderShots, renderInvaders,
   axisRenderer, renderGamma, defaultGamma
 ) where
 
@@ -21,7 +21,7 @@ import Linear ((!*!))
 import qualified Linear as L
 
 import Hasgel.Args (Args (..))
-import Hasgel.Simulation (Simulation(..), HasSimulation(..), Time(..), millis2Sec)
+import Hasgel.Simulation
 import Hasgel.Game (GameState(..), Player(..), Invader(..))
 import Hasgel.Transform
 import Hasgel.Drawable
@@ -126,13 +126,11 @@ cameraView camera =
 cameraViewProjection :: Camera -> L.M44 Float
 cameraViewProjection = uncurry (!*!) . (cameraProjection &&& cameraView)
 
-renderPlayerShots :: (HasResources s, HasSimulation s GameState,
-                      MonadBaseControl IO m, MonadState s m,
-                      MonadReader Args m) =>
-                     Camera -> m ()
-renderPlayerShots camera = do
-  playerShots <- gets $ gPlayerShots . simState . getSimulation
-  forM_ playerShots $ \transform -> do
+renderShots :: (HasResources s, HasSimulation s GameState, MonadState s m,
+                MonadBaseControl IO m, MonadReader Args m) => Camera -> m ()
+renderShots camera = do
+  shots <- gets $ gShots . simState . getSimulation
+  forM_ shots $ \transform -> do
     spriteProgram <- Res.loadProgram spriteProgramDesc
     Just point <- Res.getDrawable "point"
     texture <- gets $ resLaserTex . getResources
@@ -153,27 +151,30 @@ renderInvaders camera = do
   sim <- gets getSimulation
   let invaders = gInvaders . simState $ sim
       exploding = gExploded . simState $ sim
-  mapM_ (cubeRenderer camera . iTransform) invaders
+  mapM_ (shipRenderer camera . iTransform) invaders
   forM_ exploding $ \invader -> do
-    mainProg <- Res.loadProgram explodeProgramDesc
     let time = timeCurrent . simTime $ sim
         dt = fromMaybe 0 $ (time -) <$> iExplodeTime invader
         transform = iTransform invader
-        exFactor :: Float
-        exFactor = 8 * millis2Sec dt
-    liftBase . GL.useProgram mainProg $
-      GL.uniformByName "explode_factor" exFactor
-    renderShip mainProg camera transform
+    explodingShipRenderer camera transform dt
 
 renderPlayer :: (HasResources s, HasSimulation s GameState,
                  MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
                 Camera -> m ()
-renderPlayer camera = cubeRenderer camera =<< gets getPlayerTransform
+renderPlayer camera = do
+  sim <- gets getSimulation
+  let player = gPlayer $ simState sim
+      transform = pTransform player
+  case pExplodeTime player of
+    Nothing -> shipRenderer camera transform
+    Just explodeTime -> do
+      let time = timeCurrent . simTime $ sim
+      explodingShipRenderer camera transform (time - explodeTime)
 
-cubeRenderer :: (HasResources s, HasSimulation s GameState,
+shipRenderer :: (HasResources s, HasSimulation s GameState,
                  MonadBaseControl IO m, MonadState s m, MonadReader Args m) =>
                 Camera -> Transform -> m ()
-cubeRenderer camera transform = do
+shipRenderer camera transform = do
   mainProg <- Res.loadProgram gouraudProgramDesc
   renderShip mainProg camera transform
   normalsProg <- Res.loadProgram normalsProgramDesc
@@ -184,6 +185,16 @@ cubeRenderer camera transform = do
     GL.useProgram normalsProg $
       GL.uniformByName "mvp" mvp
     draw ship
+
+explodingShipRenderer :: (HasResources s, MonadBaseControl IO m, MonadState s m) =>
+                         Camera -> Transform -> Milliseconds -> m ()
+explodingShipRenderer camera transform explodeTime = do
+    prog <- Res.loadProgram explodeProgramDesc
+    let exFactor :: Float
+        exFactor = 8 * millis2Sec explodeTime
+    liftBase . GL.useProgram prog $
+      GL.uniformByName "explode_factor" exFactor
+    renderShip prog camera transform
 
 renderShip :: (HasResources s, MonadBase IO m, MonadState s m) =>
               GL.Program -> Camera -> Transform -> m ()
@@ -212,14 +223,11 @@ renderCameraOrientation camera = do
       mvp = ortho !*! L.m33_to_m44 rot
   renderAxis 1 mvp
 
-getPlayerTransform :: HasSimulation s GameState => s -> Transform
-getPlayerTransform = playerTransform . gPlayer . simState . getSimulation
-
 axisRenderer :: (HasResources s, HasSimulation s GameState,
                  MonadBaseControl IO m, MonadState s m) =>
                 Camera -> m ()
 axisRenderer camera = do
-  playerTrans <- gets getPlayerTransform
+  playerTrans <- gets $ pTransform . gPlayer . simState . getSimulation
   let model = transform2M44 playerTrans
       mvp = cameraViewProjection camera !*! model
   renderAxis 2 mvp

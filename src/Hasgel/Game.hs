@@ -5,6 +5,7 @@ module Hasgel.Game (
 
 import Control.Arrow (first, second)
 import Control.Monad.State
+import Data.Foldable (foldl')
 import Data.Maybe (fromMaybe)
 import System.Random (StdGen, randomR)
 
@@ -21,7 +22,7 @@ data GameState = GameState
   { gTiccmds :: [Ticcmd] -- ^ Commands to be processed.
   , gOldTiccmds :: [Ticcmd] -- ^ Processed commands, used for recording.
   , gPlayer :: Player
-  , gPlayerShots :: [Transform]
+  , gShots :: [Transform]
   , gInvaders :: [Invader]
   , gExploded :: [Invader]
   , gInvaderDir :: InvaderDir
@@ -39,10 +40,12 @@ data Invader = Invader
   }
 
 data Player = Player
-  { playerTransform :: Transform
+  { pTransform :: Transform
     -- | Time when the next shot can be fired. This allows shooting right at
     -- the start, when the time is 0.
-  , playerShotTime :: !Milliseconds
+  , pShotTime :: !Milliseconds
+    -- | Time when the player was shot and started exploding.
+  , pExplodeTime :: Maybe Milliseconds
   }
 
 -- | Commands for one tic of gameplay.
@@ -71,45 +74,71 @@ buildTiccmd inputs time = foldl build' emptyTiccmd inputs
 ticPlayer :: Time -> GameState -> GameState
 ticPlayer time gs
   | null (gTiccmds gs) = gs
-  | otherwise = let ticcmd:nextTiccmds = gTiccmds gs
-                    currPlayer = gPlayer gs
-                    currTrans = playerTransform currPlayer
-                    currShots = gPlayerShots gs
-                    trans = playerMove currTrans $ cmdMove ticcmd
-                    (player, shots) =
-                      playerShoot time currPlayer currShots $ cmdShoot ticcmd
-                in gs { gTiccmds = nextTiccmds,
-                        gOldTiccmds = ticcmd : gOldTiccmds gs,
-                        gPlayer = player { playerTransform = trans },
-                        gPlayerShots = shots }
+  -- Player dead, consume a ticcmd.
+  | Just _ <- pExplodeTime $ gPlayer gs = gs { gTiccmds = tail $ gTiccmds gs }
+  | otherwise = flip execState gs $ do
+      ticcmd <- popTiccmd
+      playerMove $ cmdMove ticcmd
+      when (cmdShoot ticcmd) $
+        playerShoot time
+
+popTiccmd :: State GameState Ticcmd
+popTiccmd = do
+  ticcmd:nextTiccmds <- gets gTiccmds
+  modify $ \gs -> gs { gTiccmds = nextTiccmds,
+                       gOldTiccmds = ticcmd : gOldTiccmds gs }
+  pure ticcmd
+
+playerMove :: Float -> State GameState ()
+playerMove dv = do
+  trans <- playerMove' dv . pTransform <$> gets gPlayer
+  modify $ \gs -> gs { gPlayer = (gPlayer gs) { pTransform = trans } }
+
+playerShoot :: Time -> State GameState ()
+playerShoot time = do
+  (player, shots) <- playerShoot' time <$> gets gPlayer <*> gets gShots
+  modify $ \gs -> gs { gPlayer = player, gShots = shots }
 
 ticGame :: Time -> GameState -> GameState
 ticGame time = ticInvaders time . ticShots time . ticPlayer time
 
 ticShots :: Time -> GameState -> GameState
 ticShots time gs
-  | null (gPlayerShots gs) = gs
+  | null (gShots gs) = gs
   | otherwise =
-      let shots = gPlayerShots gs
-          ships = gInvaders gs
-          ((shots', exs'), ships') = runState (moveShots time shots) ships
-      in gs { gPlayerShots = shots', gInvaders = ships',
-              gExploded = gExploded gs ++ exs' }
+      let ships = gInvaders gs
+          player = gPlayer gs
+          shootables = pTransform player : map iTransform ships
+          (shots, shotIxs) = moveShots time shootables $ gShots gs
+          player' = if 0 `elem` shotIxs
+                    then player { pExplodeTime = Just $ timeCurrent time}
+                    else player
+          (ships', exs') = splitShot (map (\i -> i - 1) shotIxs) ships
+          exs'' = map (\e -> e { iExplodeTime = Just $ timeCurrent time }) exs'
+      in gs { gPlayer = player', gShots = shots,
+              gInvaders = reverse ships',
+              gExploded = gExploded gs ++ exs'' }
 
-moveShots :: Time -> [Transform] -> State [Invader] ([Transform], [Invader])
-moveShots _ [] = pure ([], [])
-moveShots time (shot:shots) = do
-  ships <- get
-  let speed = 15 * millis2Sec (timeDelta time) * transformForward shot
-  case tryMove shot speed (map iTransform ships) of
-    -- Nothing was hit.
-    (shot', Nothing) -> first (shot':) <$> moveShots time shots
-    -- Hit invader at index 'i'.
-    (_, Just i) -> do
-      (prev, ex:next) <- splitAt i <$> get
-      put $ prev ++ next
-      let ex' = ex { iExplodeTime = Just $ timeCurrent time }
-      second (ex':) <$> moveShots time shots
+type Shootable = Transform
+type Shot = Transform
+
+-- | Move given shots and return a pair of shots that didn't hit and
+-- indexes of shootable objects that were hit.
+moveShots :: Time -> [Shootable] -> [Shot] -> ([Shot], [Int])
+moveShots time shootables = foldl' go ([], [])
+  where speed = 15 * millis2Sec (timeDelta time)
+        move = tryMove shootables
+        go acc shot =
+          case move shot (speed * transformForward shot) of
+            -- Nothing was hit.
+            (shot', Nothing) -> first (shot':) acc
+            -- Hit at index 'i'.
+            (_, Just i) -> second (i:) acc
+
+splitShot :: [Int] -> [Invader] -> ([Invader], [Invader])
+splitShot ixs = foldl' go ([], []) . zip [0..]
+  where go (alive, shot) (i, ship) | i `elem` ixs = (alive, ship:shot)
+                                   | otherwise = (ship:alive, shot)
 
 invaderFireRate :: Milliseconds
 invaderFireRate = 500
@@ -121,7 +150,7 @@ ticInvaders time = execState $ do
   modify $ \gs -> gs { gExploded = filter notForDelete $ gExploded gs }
   when (timeCurrent time `mod` invaderFireRate == 0) $
     modify $ \gs -> let (shots, rng) = invaderShoot (gInvaders gs) (gShotRandom gs)
-                    in gs { gPlayerShots = shots ++ gPlayerShots gs,
+                    in gs { gShots = shots ++ gShots gs,
                             gShotRandom = rng }
 
 type ChangeDir = Bool
@@ -193,8 +222,8 @@ inGameBounds transform =
   let tx = transformPosition transform ^. L._x
   in tx >= (-gameBoundsX) && tx <= gameBoundsX
 
-playerMove :: Transform -> Float -> Transform
-playerMove prev dx
+playerMove' :: Float -> Transform -> Transform
+playerMove' dx prev
   | inGameBounds new = new
   | otherwise = prev
   where new = translate prev $ L.V3 dx 0 0
@@ -202,12 +231,11 @@ playerMove prev dx
 shootCooldown :: Milliseconds
 shootCooldown = 500
 
-playerShoot :: Time -> Player -> [Transform] -> Bool -> (Player, [Transform])
-playerShoot _ player shots False = (player, shots)
-playerShoot time player shots True
-  | timeCurrent time < playerShotTime player = (player, shots)
-  | otherwise = let trans = playerTransform player
-                in (player { playerShotTime = shootCooldown + timeCurrent time },
+playerShoot' :: Time -> Player -> [Shot]  -> (Player, [Shot])
+playerShoot' time player shots
+  | timeCurrent time < pShotTime player = (player, shots)
+  | otherwise = let trans = pTransform player
+                in (player { pShotTime = shootCooldown + timeCurrent time },
                     mkShot trans : shots)
 
 emptyTiccmd :: Ticcmd
@@ -234,11 +262,11 @@ invader x y =
 
 gameState :: [Ticcmd] -> StdGen -> GameState
 gameState ticcmds shotGen =
-  let player = Player { playerTransform =
+  let player = Player { pTransform =
                           rotateLocal defaultTransform (L.V3 90 180 0),
-                        playerShotTime = 0 }
+                        pShotTime = 0, pExplodeTime = Nothing }
   in GameState { gTiccmds = ticcmds, gOldTiccmds = [],
-                 gPlayer = player, gPlayerShots = [],
+                 gPlayer = player, gShots = [],
                  gInvaders = createInvaders, gExploded = [],
                  gInvaderDir = DirRight, gOldInvaderDir = DirLeft,
                  gStartMoveDown = 0, gShotRandom = shotGen }
