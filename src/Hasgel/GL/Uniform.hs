@@ -5,6 +5,7 @@ module Hasgel.GL.Uniform (
 ) where
 
 import Control.Monad.IO.Class (MonadIO (..))
+import Data.Int (Int32)
 import Foreign (castPtr, withArrayLen)
 import Foreign.C (withCAString)
 import Graphics.GL.Core45
@@ -40,6 +41,10 @@ instance UniformData Float where
 instance UniformData (L.V3 Float) where
   uniformv loc vec = liftIO . withArrayLen vec $ \n ->
     glUniform3fv (unwrapLocation loc) (fromIntegral n) . castPtr
+
+instance UniformData (L.V2 Int32) where
+  uniformv loc vec = liftIO . withArrayLen vec $ \n ->
+    glUniform2iv (unwrapLocation loc) (fromIntegral n) . castPtr
 
 uniformByName :: (MonadIO m, UniformData a) => String -> a -> UsedProgram m ()
 uniformByName name v = do
