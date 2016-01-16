@@ -156,7 +156,7 @@ loop = do
       fboTex <- gets $ (! 0) . fbColorTextures . resFbo . getResources
       gamma <- fromMaybe defaultGamma <$> asks argsGamma
       renderGamma gamma fboTex
-      displayStats
+      displayStats -- Text rendering, ignore depth buffer.
       throwError
     resetFrameTimer
     updateTime
@@ -188,14 +188,16 @@ timerInterval = 500
 displayStats :: (MonadBaseControl IO m, MonadState World m) => m ()
 displayStats = do
   ft <- gets worldFrameTimer
-  let cpuTime = FT.getCPUMax ft
+  let cpuAvg = FT.getCPUAvg ft
+      cpuMax = FT.getCPUMax ft
       gpuTime = FT.getGPUMax ft
-      cpuStats = printf "CPU: %.2fms %.2fFPS (max)" cpuTime (1e3 / cpuTime)
+      cpuStats s = printf "CPU: %.2fms %.2fFPS (%s)" s (1e3 / s)
       gpuStats = printf "GPU: %.2fms %.2fFPS (max)" gpuTime (1e3 / gpuTime)
       x = 800 * 0.7
-      y = 600 * 0.95
-  renderString x y cpuStats
-  renderString x (y + 16) gpuStats
+      y = 600 * 0.92
+  renderString x y $ cpuStats cpuAvg "avg."
+  renderString x (y + 16) $ cpuStats cpuMax "max"
+  renderString x (y + 32) gpuStats
 
 -- | Reset the frame timer every 'timerInterval'.
 resetFrameTimer :: (MonadIO m, MonadState World m) => m ()

@@ -26,6 +26,7 @@ data FrameTimer = FrameTimer
 
 data CPUTimer = CPUTimer
   { cpuMax :: !Double -- ^ Maximum measured CPU time in ms.
+  , cpuAvg :: !Double -- ^ Average CPU time in ms since last reset.
   , cpuLast :: !Double -- ^ Last CPU time in ms.
   , cpuStart :: !Double -- ^ Starting CPU time in ms.
   } deriving (Show)
@@ -54,7 +55,7 @@ withFrameTimer action = do
 createFrameTimer :: MonadIO m => ((Query, Query), (Query, Query)) -> m FrameTimer
 createFrameTimer qs = do
   nowCPU <- now
-  pure $ FrameTimer qs 0 0 0 (CPUTimer 0 nowCPU nowCPU)
+  pure $ FrameTimer qs 0 0 0 (CPUTimer 0 0 nowCPU nowCPU)
 
 updateFrameTimer :: MonadIO m => FrameTimer -> m FrameTimer
 updateFrameTimer ft@(FrameTimer _ 0 _ _ _) = pure ft { timerFrames = 1 }
@@ -77,10 +78,12 @@ updateCPUTimer frame cpuTimer = do
 resetFrameTimer :: FrameTimer -> FrameTimer
 resetFrameTimer (FrameTimer qs@(q1, q2) frames _ maxGPU cpuTimer) =
   let qs' = if odd frames then qs else (q2, q1)
-  in FrameTimer qs' 1 0 maxGPU $ resetCPUTimer cpuTimer
+  in FrameTimer qs' 1 0 maxGPU $ resetCPUTimer frames cpuTimer
 
-resetCPUTimer :: CPUTimer -> CPUTimer
-resetCPUTimer cpuTimer = cpuTimer { cpuStart = cpuLast cpuTimer }
+resetCPUTimer :: Frame -> CPUTimer -> CPUTimer
+resetCPUTimer frames cpuTimer =
+  cpuTimer { cpuAvg = dt / fromIntegral frames, cpuStart = cpuLast cpuTimer }
+  where dt = (-) <$> cpuLast <*> cpuStart $ cpuTimer
 
 getGPUAvg :: FrameTimer -> Double
 getGPUAvg (FrameTimer _ frames acc _ _) = acc / fromIntegral frames
@@ -94,9 +97,10 @@ now = (*1E3) <$> SDL.time -- SDL.time returns time in seconds.
 
 -- | Return average CPU time in milliseconds per frame.
 getCPUAvg :: FrameTimer -> Double
-getCPUAvg ft = dt / frames
-  where frames = fromIntegral $ timerFrames ft
-        dt = (-) <$> cpuLast <*> cpuStart $ timerCPU ft
+getCPUAvg = cpuAvg . timerCPU
+-- getCPUAvg ft = dt / frames
+--   where frames = fromIntegral $ timerFrames ft
+--         dt = (-) <$> cpuLast <*> cpuStart $ timerCPU ft
 
 getCPUMax :: FrameTimer -> Double
 getCPUMax = cpuMax . timerCPU
