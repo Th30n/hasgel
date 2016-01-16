@@ -37,7 +37,7 @@ data Invader = Invader
   { iTransform :: Transform
     -- | Time when the invader was shot and started exploding.
   , iExplodeTime :: Maybe Milliseconds
-  }
+  } deriving (Show)
 
 data Player = Player
   { pTransform :: Transform
@@ -148,10 +148,26 @@ ticInvaders time = execState $ do
   modify $ moveInvaders time
   let notForDelete inv = (timeCurrent time - fromMaybe 0 (iExplodeTime inv)) < 2000
   modify $ \gs -> gs { gExploded = filter notForDelete $ gExploded gs }
-  when (timeCurrent time `mod` invaderFireRate == 0) $
-    modify $ \gs -> let (shots, rng) = invaderShoot (gInvaders gs) (gShotRandom gs)
+  when (timeCurrent time `mod` invaderFireRate == 0) $ do
+    invaders <- gets gInvaders
+    let shooters = filter (canShoot invaders) invaders
+    modify $ \gs -> let (shots, rng) = invaderShoot shooters (gShotRandom gs)
                     in gs { gShots = shots ++ gShots gs,
                             gShotRandom = rng }
+
+-- | Return True if the given invader can shoot. This is the case when no
+-- invader is in his line of sight.
+canShoot :: [Invader] -> Invader -> Bool
+canShoot friends inv =
+  let pos = transformPosition . iTransform
+      posX i = pos i ^. L._x
+      scaleX i = transformScale (iTransform i) ^. L._x
+      leftX i = posX i - scaleX i
+      rightX i = posX i + scaleX i
+      above i = pos i ^. L._y >= pos inv ^. L._y
+      notBlocking i = leftX i <= leftX inv && rightX i <= leftX inv ||
+                      leftX i >= rightX inv && rightX i >= rightX inv
+  in all (\i -> above i || notBlocking i) $ filter (\i -> pos i /= pos inv) friends
 
 type ChangeDir = Bool
 
