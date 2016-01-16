@@ -4,7 +4,7 @@ module Hasgel.Rendering (
   Camera(..), defaultCamera, viewForward, viewBack, viewRight, viewLeft,
   viewUp, viewDown,
   renderCameraOrientation, renderPlayer, renderShots, renderInvaders,
-  axisRenderer, renderGamma, defaultGamma
+  renderString, axisRenderer, renderGamma, defaultGamma
 ) where
 
 import Control.Lens ((.~), (^.))
@@ -12,7 +12,10 @@ import Control.Monad (forM_, when)
 import Control.Monad.Base (MonadBase (..))
 import Control.Monad.Reader (MonadReader, asks)
 import Control.Monad.State (MonadState(..), gets)
+import Control.Monad.Trans (MonadTrans(..))
 import Control.Monad.Trans.Control (MonadBaseControl (..))
+import Data.Char (ord)
+import Data.Int (Int32)
 import Data.Maybe (fromMaybe)
 
 import Graphics.GL.Core45
@@ -56,6 +59,11 @@ spriteProgramDesc :: Res.ProgramDesc
 spriteProgramDesc = [("shaders/billboard.vert", GL.VertexShader),
                      ("shaders/billboard.geom", GL.GeometryShader),
                      ("shaders/billboard.frag", GL.FragmentShader)]
+
+textProgramDesc :: Res.ProgramDesc
+textProgramDesc = [("shaders/billboard.vert", GL.VertexShader),
+                   ("shaders/billboard.geom", GL.GeometryShader),
+                   ("shaders/text.frag", GL.FragmentShader)]
 
 normalsProgramDesc :: Res.ProgramDesc
 normalsProgramDesc = [("shaders/basic.vert", GL.VertexShader),
@@ -256,3 +264,41 @@ renderGamma gamma texture = do
       GL.uniformByName "mvp" $ transform2M44 model
       GL.uniformByName "gamma" gamma
     draw plane
+
+-- | Construct an orthographic projection that corresponds with
+-- screen resolution.
+screenOrtho :: Float -> Float -> L.M44 Float
+screenOrtho width height = L.ortho 0 width 0 height (-1) 1
+
+renderString :: (HasResources s, MonadState s m, MonadBaseControl IO m) =>
+                Float -> Float -> String -> m ()
+renderString x y text = do
+  prog <- Res.loadProgram textProgramDesc
+  Just plane <- Res.getDrawable "point"
+  texture <- gets $ resFontTex . getResources
+  liftBase $ do
+    glActiveTexture GL_TEXTURE0
+    glBindTexture GL_TEXTURE_2D $ GL.object texture
+    let proj = screenOrtho 800 600
+        cellWidth = 16 :: Int32
+        cellHeight = 16 :: Int32
+        charPos = charPosForFont 256 cellWidth cellHeight
+    GL.useProgram prog $ do
+      GL.uniformByName "proj" proj
+      GL.uniformByName "size" (0.5 * fromIntegral cellWidth :: Float)
+      GL.uniformByName "cell" $ L.V2 cellWidth cellHeight
+      forM_ (zip [0..] text) $ \(i, c) -> do
+        GL.uniformByName "char_pos" $ charPos c
+        let currX = x + 0.5 * i * fromIntegral cellWidth
+            model = translate defaultTransform $ L.V3 currX y 0
+        GL.uniformByName "mv" $ transform2M44 model
+        lift $ draw plane
+
+charPosForFont :: Int32 -> Int32 -> Int32 -> Char -> L.V2 Int32
+charPosForFont width cellWidth cellHeight char
+  | ord char < 0 || ord char > 255 = error "Only ASCII supported."
+  | otherwise = L.V2 (x * cellWidth) (y * cellHeight)
+  where charsPerLine = width `div` cellWidth
+        charNum = fromIntegral $ ord char - 32
+        x = charNum `mod` charsPerLine
+        y = charNum `div` charsPerLine
