@@ -75,7 +75,7 @@ ticPlayer :: Time -> GameState -> GameState
 ticPlayer time gs
   | null (gTiccmds gs) = gs
   -- Player dead, consume a ticcmd.
-  | Just _ <- pExplodeTime $ gPlayer gs = gs { gTiccmds = tail $ gTiccmds gs }
+  | Just _ <- pExplodeTime $ gPlayer gs = execState (void popTiccmd) gs
   | otherwise = flip execState gs $ do
       ticcmd <- popTiccmd
       playerMove $ cmdMove ticcmd
@@ -177,7 +177,7 @@ moveDownTime = 200
 
 moveInvaders :: Time -> GameState -> GameState
 moveInvaders time gs =
-  let shipSpeed = 2.5 * millis2Sec (timeDelta time)
+  let shipSpeed = 1.5 * millis2Sec (timeDelta time)
       transforms = map iTransform $ gInvaders gs
       (changeDir, ships) = case gInvaderDir gs of
                               DirLeft -> invaderHorMove (-shipSpeed) transforms
@@ -258,10 +258,10 @@ emptyTiccmd :: Ticcmd
 emptyTiccmd = Ticcmd { cmdMove = 0, cmdShoot = False }
 
 createInvaders :: [Invader]
-createInvaders = let fstRow x = invader x 15
-                     sndRow x = invader x 18
-                     xs = [-4, 0, 4]
-                 in map fstRow xs ++ map sndRow xs
+createInvaders = do
+  x <- [-8, -4..8]
+  y <- [12, 15, 18]
+  pure $ invader x y
 
 -- | Create a shot transform in front of the given source transform.
 mkShot :: Transform -> Transform
