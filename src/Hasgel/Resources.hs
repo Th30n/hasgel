@@ -35,6 +35,7 @@ type ProgramDesc = [ShaderDesc]
 data Resources = Resources
   { resTex :: GL.Texture
   , resLaserTex :: GL.Texture
+  , resFontTex :: GL.Texture
   , timeQueries :: [GL.Query]
   , resPrograms :: Programs
   , resDrawables :: M.Map String Drawable
@@ -74,6 +75,7 @@ loadResources :: IO Resources
 loadResources = do
     tex <- loadTexture "share/models/player-ship-diffuse.bmp"
     laserTex <- loadTexture "share/gfx/laser-shot.bmp"
+    fontTex <- loadTexture "share/gfx/font-16.bmp"
     qs <- GL.gens 4
     eitherMesh <- loadHmd "share/models/player-ship.hmd"
     eitherRs <- setPlaneVao
@@ -88,7 +90,8 @@ loadResources = do
     let rsMap' = M.insert "point" pointDrawable $
                  M.insert "player-ship" rs rsMap
     fbo <- createFbo
-    pure Resources { resTex = tex, resLaserTex = laserTex, timeQueries = qs,
+    pure Resources { resTex = tex, resLaserTex = laserTex, resFontTex = fontTex,
+                     timeQueries = qs,
                      resPrograms = emptyPrograms,
                      resDrawables = rsMap', resFbo = fbo }
 
@@ -96,6 +99,7 @@ freeResources :: Resources -> IO ()
 freeResources res = do
   GL.delete $ resTex res
   GL.delete $ resLaserTex res
+  GL.delete $ resFontTex res
   GL.deletes $ timeQueries res
   mapM_ freeDrawable $ resDrawables res
   GL.delete $ resFbo res

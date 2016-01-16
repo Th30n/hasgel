@@ -1,23 +1,33 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Hasgel.FrameTimer (
-  FrameTimer, HasFrameTimer(..), createFrameTimer, withFrameTimer, timerStart,
-  getGPUTime, getCPUTime, resetFrameTimer
+  FrameTimer, HasFrameTimer(..), createFrameTimer, withFrameTimer,
+  getGPUAvg, getGPUMax, getCPUAvg, getCPUMax, getTimerStart,
+  resetFrameTimer, now
 ) where
 
+import Control.Arrow ((&&&))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.State (MonadState, gets, modify)
-import Data.Word (Word32)
+
+import qualified SDL
 
 import Hasgel.GL (Query, getQueryResult, queryCounter)
 
-type Milliseconds = Word32
+type Frame = Int
 
 data FrameTimer = FrameTimer
   { timerQueries :: ((Query, Query), (Query, Query))
-  , timerFrames :: !Int
+  , timerFrames :: !Frame
   , timerAccum :: !Double
-  , timerStart :: !Milliseconds
+  , timerGPUMax :: !Double -- ^ Maximum measured GPU time in ms.
+  , timerCPU :: CPUTimer
+  } deriving (Show)
+
+data CPUTimer = CPUTimer
+  { cpuMax :: !Double -- ^ Maximum measured CPU time in ms.
+  , cpuLast :: !Double -- ^ Last CPU time in ms.
+  , cpuStart :: !Double -- ^ Starting CPU time in ms.
   } deriving (Show)
 
 class HasFrameTimer a where
@@ -31,7 +41,8 @@ class HasFrameTimer a where
 -- timings.
 withFrameTimer :: (HasFrameTimer s, MonadIO m, MonadState s m) => m a -> m a
 withFrameTimer action = do
-  ft@(FrameTimer qs frames _ _) <- gets getFrameTimer
+  ft <- gets getFrameTimer
+  let (qs, frames) = timerQueries &&& timerFrames $ ft
   let q = if odd frames then fst qs else snd qs
   queryCounter $ fst q
   r <- action
@@ -40,27 +51,55 @@ withFrameTimer action = do
   modify $ flip setFrameTimer ft'
   pure r
 
-createFrameTimer :: ((Query, Query), (Query, Query)) -> Milliseconds -> FrameTimer
-createFrameTimer qs = FrameTimer qs 0 0
+createFrameTimer :: MonadIO m => ((Query, Query), (Query, Query)) -> m FrameTimer
+createFrameTimer qs = do
+  nowCPU <- now
+  pure $ FrameTimer qs 0 0 0 (CPUTimer 0 nowCPU nowCPU)
 
 updateFrameTimer :: MonadIO m => FrameTimer -> m FrameTimer
-updateFrameTimer ft@(FrameTimer _ 0 _ _) = pure ft { timerFrames = 1 }
-updateFrameTimer (FrameTimer qs frames acc time) = do
+updateFrameTimer ft@(FrameTimer _ 0 _ _ _) = pure ft { timerFrames = 1 }
+updateFrameTimer (FrameTimer qs frames acc maxGPU cpuTimer) = do
   let q = if even frames then fst qs else snd qs
   startTime <- getQueryResult $ fst q
   endTime <- getQueryResult $ snd q
+  cpuTimer' <- updateCPUTimer frames cpuTimer
   let ms = (*1E-6) . fromIntegral $ endTime - startTime
-  pure $ FrameTimer qs (frames + 1) (acc + ms) time
+      maxGPU' = if frames == 1 then ms else max ms maxGPU
+  pure $ FrameTimer qs (frames + 1) (acc + ms) maxGPU' cpuTimer'
 
-resetFrameTimer :: FrameTimer -> Milliseconds -> FrameTimer
-resetFrameTimer (FrameTimer qs@(q1, q2) frames _ _) start =
+updateCPUTimer :: MonadIO m => Frame -> CPUTimer -> m CPUTimer
+updateCPUTimer frame cpuTimer = do
+  nowCPU <- now
+  let msCPU = nowCPU - cpuLast cpuTimer
+      maxCPU' = if frame == 1 then msCPU else max msCPU (cpuMax cpuTimer)
+  pure $ cpuTimer { cpuMax = maxCPU', cpuLast = nowCPU }
+
+resetFrameTimer :: FrameTimer -> FrameTimer
+resetFrameTimer (FrameTimer qs@(q1, q2) frames _ maxGPU cpuTimer) =
   let qs' = if odd frames then qs else (q2, q1)
-  in FrameTimer qs' 1 0 start
+  in FrameTimer qs' 1 0 maxGPU $ resetCPUTimer cpuTimer
 
-getGPUTime :: FrameTimer -> Double
-getGPUTime (FrameTimer _ frames acc _) = acc / fromIntegral frames
+resetCPUTimer :: CPUTimer -> CPUTimer
+resetCPUTimer cpuTimer = cpuTimer { cpuStart = cpuLast cpuTimer }
 
-getCPUTime :: FrameTimer -> Milliseconds -> Double
-getCPUTime ft end = dt / frames
+getGPUAvg :: FrameTimer -> Double
+getGPUAvg (FrameTimer _ frames acc _ _) = acc / fromIntegral frames
+
+getGPUMax :: FrameTimer -> Double
+getGPUMax = timerGPUMax
+
+-- | Return current time (since some arbitrary point) in milliseconds.
+now :: MonadIO m => m Double
+now = (*1E3) <$> SDL.time -- SDL.time returns time in seconds.
+
+-- | Return average CPU time in milliseconds per frame.
+getCPUAvg :: FrameTimer -> Double
+getCPUAvg ft = dt / frames
   where frames = fromIntegral $ timerFrames ft
-        dt = fromIntegral $ end - timerStart ft
+        dt = (-) <$> cpuLast <*> cpuStart $ timerCPU ft
+
+getCPUMax :: FrameTimer -> Double
+getCPUMax = cpuMax . timerCPU
+
+getTimerStart :: FrameTimer -> Double
+getTimerStart = cpuStart . timerCPU

@@ -84,6 +84,7 @@ updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds time
 main :: IO ()
 main =
   MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
+    MySDL.setWindowTitle (getWindow d) "hasgel"
     printGLInfo
     glViewport 0 0 800 600
     glEnable GL_CULL_FACE
@@ -110,7 +111,7 @@ createWorld :: Display -> Resources -> GameState -> IO World
 createWorld disp res gs = do
   time <- SDL.ticks
   let [q1, q2, q3, q4] = timeQueries res
-      ft = FT.createFrameTimer ((q1, q2), (q3, q4)) time
+  ft <- FT.createFrameTimer ((q1, q2), (q3, q4))
   return World { worldLoopState = Continue,
                  worldDisplay = disp,
                  worldTime = Time time 0,
@@ -148,14 +149,16 @@ loop = do
                                  axisRenderer]
         glViewport 0 0 100 100
         lift $ renderCameraOrientation camera
+        glDisable GL_DEPTH_TEST
         glViewport 0 0 800 600
       -- Skip clearing draw buffer and depth testing for fullscreen quad.
       glDisable GL_DEPTH_TEST
       fboTex <- gets $ (! 0) . fbColorTextures . resFbo . getResources
       gamma <- fromMaybe defaultGamma <$> asks argsGamma
       renderGamma gamma fboTex
+      displayStats
       throwError
-    displayFrameRate
+    resetFrameTimer
     updateTime
     loop
 
@@ -178,25 +181,30 @@ clearOldTiccmds = do
   let sim' = (\gs -> gs { gOldTiccmds = [] }) <$> sim
   modify $ \w -> setSimulation w sim'
 
--- | Interval for updating the frame timer information.
-timerInterval :: Milliseconds
+-- | Interval in ms for reseting the frame timer information.
+timerInterval :: Double
 timerInterval = 500
 
-titleFormat :: String
-titleFormat = "hasgel  CPU: %.2fms  GPU: %.2fms"
-
-displayFrameRate :: (MonadIO m, MonadState World m) => m ()
-displayFrameRate = do
+displayStats :: (MonadBaseControl IO m, MonadState World m) => m ()
+displayStats = do
   ft <- gets worldFrameTimer
-  time <- gets $ timeCurrent . worldTime
-  let startTime = FT.timerStart ft
-  when (time >= timerInterval + startTime) $ do
-    let cpuTime = FT.getCPUTime ft time
-        gpuTime = FT.getGPUTime ft
-        title = printf titleFormat cpuTime gpuTime
-    win <- gets (getWindow . worldDisplay)
-    MySDL.setWindowTitle win title
-    modify . flip FT.setFrameTimer $ FT.resetFrameTimer ft time
+  let cpuTime = FT.getCPUMax ft
+      gpuTime = FT.getGPUMax ft
+      cpuStats = printf "CPU: %.2fms %.2fFPS (max)" cpuTime (1e3 / cpuTime)
+      gpuStats = printf "GPU: %.2fms %.2fFPS (max)" gpuTime (1e3 / gpuTime)
+      x = 800 * 0.7
+      y = 600 * 0.95
+  renderString x y cpuStats
+  renderString x (y + 16) gpuStats
+
+-- | Reset the frame timer every 'timerInterval'.
+resetFrameTimer :: (MonadIO m, MonadState World m) => m ()
+resetFrameTimer = do
+  ft <- gets worldFrameTimer
+  time <- FT.now
+  let startTime = FT.getTimerStart ft
+  when (time >= timerInterval + startTime) $
+    modify . flip FT.setFrameTimer $ FT.resetFrameTimer ft
 
 updateTime :: (MonadIO m, MonadState World m) => m ()
 updateTime = do
