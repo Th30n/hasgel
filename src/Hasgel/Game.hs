@@ -10,6 +10,8 @@ import Data.Maybe (fromMaybe)
 import System.Random (StdGen, randomR)
 
 import Control.Lens ((^.))
+import Data.Binary (Binary)
+import qualified Data.Binary as B
 import qualified Linear as L
 
 import Hasgel.Game.Movement (tryMove)
@@ -54,6 +56,10 @@ data Ticcmd = Ticcmd
   , cmdShoot :: !Bool -- ^ True if shooting.
   } deriving (Show, Read)
 
+instance Binary Ticcmd where
+  put = (>>) <$> B.put . cmdMove <*> B.put . cmdShoot
+  get = Ticcmd <$> B.get <*> B.get
+
 -- | Player control commands.
 data PlayerCmd =
   MoveLeft
@@ -64,9 +70,9 @@ data PlayerCmd =
 addTiccmd :: GameState -> Ticcmd -> GameState
 addTiccmd gs ticcmd = gs { gTiccmds = gTiccmds gs ++ [ticcmd] }
 
-buildTiccmd :: Foldable f => f PlayerCmd -> Time -> Ticcmd
-buildTiccmd inputs time = foldl build' emptyTiccmd inputs
-  where playerSpeed = 10 * millis2Sec (timeDelta time)
+buildTiccmd :: Foldable f => f PlayerCmd -> Ticcmd
+buildTiccmd = foldl' build' emptyTiccmd
+  where playerSpeed = 10
         build' cmd MoveLeft = cmd { cmdMove = cmdMove cmd - playerSpeed }
         build' cmd MoveRight = cmd { cmdMove = cmdMove cmd + playerSpeed }
         build' cmd Shoot = cmd { cmdShoot = True }
@@ -78,7 +84,8 @@ ticPlayer time gs
   | Just _ <- pExplodeTime $ gPlayer gs = execState (void popTiccmd) gs
   | otherwise = flip execState gs $ do
       ticcmd <- popTiccmd
-      playerMove $ cmdMove ticcmd
+      let speed = cmdMove ticcmd * millis2Sec (timeDelta time)
+      playerMove speed
       when (cmdShoot ticcmd) $
         playerShoot time
 

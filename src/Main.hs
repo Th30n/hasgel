@@ -1,6 +1,7 @@
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 
 module Main ( main ) where
 
@@ -11,12 +12,19 @@ import Control.Monad.Trans.Control (MonadBaseControl (..))
 import Data.Int (Int32)
 import Data.IntMap ((!))
 import Data.Maybe (fromMaybe)
+import Data.Monoid
 import Data.Set (Set)
 import qualified Data.Set as Set
-import System.IO (IOMode (..), hPrint, withFile)
-import System.Random (mkStdGen)
+import System.IO
+import System.Random (mkStdGen, randomIO)
 import Text.Printf (printf)
 
+import qualified Data.Binary as B
+import Data.Binary.Get (ByteOffset)
+import qualified Data.Binary.Get as B
+import Data.ByteString.Builder
+import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as BS
 import Graphics.GL.Core45
 import Linear ((*^))
 import qualified Linear as L
@@ -57,6 +65,7 @@ data World = World
   , worldPlayerCmds :: Set PlayerCmd
   , worldPaused :: Bool
   , worldCamera :: Camera
+  , worldDemoBuffer :: DemoBuffer
   }
 
 instance HasResources World where
@@ -71,6 +80,10 @@ instance HasSimulation World GameState where
   getSimulation = worldSimulation
   setSimulation w sim = w { worldSimulation = sim }
 
+newtype DemoBuffer = DemoBuffer Builder deriving (Monoid)
+
+type RandomSeed = Int
+
 runTics :: MonadState World m => DemoState -> Milliseconds -> m ()
 runTics demo dt = do
   sim <- gets getSimulation
@@ -79,7 +92,7 @@ runTics demo dt = do
 
 updateGame :: DemoState -> Set PlayerCmd -> Update GameState
 updateGame (Playback _) _ time gs = ticGame time gs
-updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds time
+updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds
 
 main :: IO ()
 main =
@@ -90,11 +103,14 @@ main =
     glEnable GL_CULL_FACE
     withResources $ \res -> do
       args <- getArgs
-      ticcmds <- case argsDemo args of
-                   Playback fp -> readDemo fp
-                   _ -> return []
-      let seed = 0
-      world <- createWorld d res $ gameState ticcmds (mkStdGen seed)
+      (seed, ticcmds) <- case argsDemo args of
+                           Playback fp -> readDemo fp
+                           _ -> (\s -> (s, [])) <$> randomIO
+      let demoBuffer = if isDemoRecording (argsDemo args)
+                       then beginRecording seed
+                       else mempty
+          game = gameState ticcmds (mkStdGen seed)
+      world <- createWorld d res demoBuffer game
       void $ execStateT (runReaderT loop args) world
 
 withDisplay :: (Display -> IO a) -> IO a
@@ -107,8 +123,8 @@ printGLInfo = do
     printf "GL Version: %s\n" =<< getParam Version
     printf "GLSL Version: %s\n" =<< getParam ShadingLanguageVersion
 
-createWorld :: Display -> Resources -> GameState -> IO World
-createWorld disp res gs = do
+createWorld :: Display -> Resources -> DemoBuffer -> GameState -> IO World
+createWorld disp res demoBuffer gs = do
   time <- SDL.ticks
   let [q1, q2, q3, q4] = timeQueries res
   ft <- FT.createFrameTimer ((q1, q2), (q3, q4))
@@ -119,21 +135,25 @@ createWorld disp res gs = do
                  worldSimulation = simulation gs,
                  worldPlayerCmds = Set.empty,
                  worldPaused = False,
-                 worldCamera = defaultCamera }
+                 worldCamera = defaultCamera,
+                 worldDemoBuffer = demoBuffer }
 
 loop :: (MonadIO m, MonadBaseControl IO m,
          MonadState World m, MonadReader Args m) => m ()
 loop = do
   ls <- gets worldLoopState
-  when (ls /= Quit) $ do
+  demoState <- asks argsDemo
+  when (ls == Quit && isDemoRecording demoState) $ do
+    let Record fp = demoState
+    liftIO . writeDemo fp =<< gets worldDemoBuffer
+  unless (ls == Quit) $ do
     liftIO getEvents >>= mapM_ handleEvent
     paused <- gets worldPaused
-    demoState <- asks argsDemo
     unless paused $ gets (timeDelta . worldTime) >>= runTics demoState
     case demoState of
       Playback _ -> checkDemoEnd
-      Record fp -> liftIO . recordDemo fp =<< gets getSimulation
-      _ -> return ()
+      Record _ -> recordDemo
+      _ -> pure ()
     clearOldTiccmds
     disp <- gets worldDisplay
     renderDisplay disp . FT.withFrameTimer $ do
@@ -162,18 +182,56 @@ loop = do
     updateTime
     loop
 
+isDemoRecording :: DemoState -> Bool
+isDemoRecording (Record _) = True
+isDemoRecording _ = False
+
+-- | Check whether there are no more ticcmds and quit the loop.
 checkDemoEnd :: MonadState World m => m ()
 checkDemoEnd = do
   ticcmds <- gets $ gTiccmds . simState . getSimulation
   when (null ticcmds) $ modify $ \w -> w { worldLoopState = Quit }
 
-readDemo :: FilePath -> IO [Ticcmd]
-readDemo fp = concatMap read . lines <$> readFile fp
+-- | Read the demo information from the file.
+readDemo :: FilePath -> IO (RandomSeed, [Ticcmd])
+readDemo fp = do
+  bytes <- BS.readFile fp
+  res <- pure $ do
+    (remaining, _, seed) <- B.runGetOrFail B.get bytes
+    ticcmds <- readTiccmds remaining
+    pure (seed, ticcmds)
+  case res of
+    Left (_, _, msg) -> error $ printf "readDemo: %s" msg
+    Right r -> pure r
 
-recordDemo :: FilePath -> Simulation GameState -> IO ()
-recordDemo fp sim = do
+readTiccmds :: ByteString -> Either (ByteString, ByteOffset, String) [Ticcmd]
+readTiccmds bytes
+  | BS.null bytes = pure []
+  | otherwise = do
+      (remaining, _, cmd) <- B.runGetOrFail B.get bytes
+      (cmd:) <$> readTiccmds remaining
+
+beginRecording :: RandomSeed -> DemoBuffer
+beginRecording = DemoBuffer . lazyByteString . B.encode
+
+recordDemo :: MonadState World m => m ()
+recordDemo = modify $ \w ->
+  let sim = worldSimulation w
+      buf' = writeDemoTiccmds sim $ worldDemoBuffer w
+  in w { worldDemoBuffer = buf' }
+
+writeDemoTiccmds :: Simulation GameState -> DemoBuffer -> DemoBuffer
+writeDemoTiccmds sim buffer =
   let ticcmds = reverse . gOldTiccmds $ simState sim
-  liftIO . withFile fp AppendMode $ \fh -> hPrint fh ticcmds
+      bytes = map (DemoBuffer . lazyByteString . B.encode) ticcmds
+  in buffer <> mconcat bytes
+
+writeDemo :: FilePath -> DemoBuffer -> IO ()
+writeDemo fp (DemoBuffer buffer) =
+  withBinaryFile fp WriteMode $ \fh -> do
+    hSetBuffering fh $ BlockBuffering Nothing
+    hPutBuilder fh buffer
+    printf "Wrote demo to %s\n" fp
 
 clearOldTiccmds :: (MonadState World m) => m ()
 clearOldTiccmds = do

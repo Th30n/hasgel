@@ -20,4 +20,4 @@ convert infile outfile = do
   parsed <- loadObj infile
   case parsed of
     Left err -> putStrLn err
-    Right obj -> encodeFile outfile  obj
+    Right obj -> encodeFile outfile obj
