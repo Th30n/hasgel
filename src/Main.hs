@@ -5,7 +5,7 @@
 
 module Main ( main ) where
 
-import Control.Exception (bracket)
+import Control.Exception (bracket, bracket_)
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
@@ -31,6 +31,7 @@ import qualified Linear as L
 import qualified SDL
 
 import Hasgel.Args
+import Hasgel.Configuration
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
 import Hasgel.Game (GameState (..), PlayerCmd (..), Ticcmd, addTiccmd,
@@ -39,7 +40,6 @@ import Hasgel.GL
 import Hasgel.Input
 import Hasgel.Rendering
 import Hasgel.Resources
-import qualified Hasgel.SDL as MySDL
 import Hasgel.Simulation (HasSimulation (..), Milliseconds, Simulation (..),
                           Time (..), Update, millis2Sec, simulate, simulation)
 import Hasgel.Transform (rotateLocal, rotateWorld, translate)
@@ -95,9 +95,10 @@ updateGame (Playback _) _ time gs = ticGame time gs
 updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds
 
 main :: IO ()
-main =
-  MySDL.withInit [MySDL.InitVideo] . withDisplay $ \d -> do
-    MySDL.setWindowTitle (getWindow d) "hasgel"
+main = withSDL [SDL.InitVideo] . withDisplay $ \d -> do
+    let cfg = defaultCfg
+    when (cfgFullscreen cfg) $
+      SDL.setWindowMode (getWindow d) SDL.Fullscreen
     printGLInfo
     glViewport 0 0 800 600
     glEnable GL_CULL_FACE
@@ -112,6 +113,9 @@ main =
           game = gameState ticcmds (mkStdGen seed)
       world <- createWorld d res demoBuffer game
       void $ execStateT (runReaderT loop args) world
+
+withSDL :: Foldable f => f SDL.InitFlag -> IO a -> IO a
+withSDL flags = bracket_ (SDL.initialize flags) (SDL.quit)
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay

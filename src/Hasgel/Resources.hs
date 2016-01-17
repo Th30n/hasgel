@@ -21,12 +21,13 @@ import System.Directory (getModificationTime)
 import System.IO (hPutStrLn, stderr)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
 
+import qualified SDL
 import Graphics.GL.Core45
+import qualified Linear as L
 
 import qualified Hasgel.GL as GL
 import Hasgel.Drawable
 import Hasgel.Mesh (cube, loadHmd)
-import qualified Hasgel.SDL as SDL
 
 type ModificationTime = UTCTime
 type ShaderDesc = (FilePath, GL.ShaderType)
@@ -131,9 +132,8 @@ loadTexture file = do
   tex <- GL.gen
   glActiveTexture GL_TEXTURE0
   glBindTexture GL_TEXTURE_2D $ GL.object tex
-  let w = fromIntegral $ SDL.surfaceW s
-      h = fromIntegral $ SDL.surfaceH s
-      pixels = SDL.surfacePixels s
+  L.V2 w h <- fmap fromIntegral <$> SDL.surfaceDimensions s
+  pixels <- SDL.surfacePixels s
   glTexImage2D GL_TEXTURE_2D 0 GL_SRGB8 w h 0 GL_BGR GL_UNSIGNED_BYTE pixels
   glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_NEAREST
   glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_NEAREST
