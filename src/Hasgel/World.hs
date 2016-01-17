@@ -3,10 +3,12 @@
 
 module Hasgel.World (
   World(..), Configuration (..), Loop(..), DemoBuffer(..),
-  createWorld, execDefaultCfg
+  Console(..), ConsoleCmd (..), runConsole,
+  createWorld, execDefaultCfg, handleConsoleEvent
 ) where
 
 import Control.Monad (foldM)
+import Data.Char (toLower)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
@@ -21,6 +23,7 @@ import qualified SDL
 import Hasgel.Display (Display (..))
 import qualified Hasgel.FrameTimer as FT
 import Hasgel.Game (GameState, PlayerCmd)
+import Hasgel.Input
 import Hasgel.Rendering (Camera, defaultCamera)
 import Hasgel.Resources (HasResources (..), Resources (..))
 import Hasgel.Simulation (HasSimulation (..), Simulation, Time (..), simulation)
@@ -35,6 +38,8 @@ type CommandName = String
 data Command =
   FullscreenCmd Bool
   | ExecCmd FilePath
+  | QuitCmd
+  | EchoCmd String
   deriving (Show)
 
 type Commands = Map CommandName ([CommandArg] -> Either String Command)
@@ -51,6 +56,8 @@ data World = World
   , worldCamera :: Camera
   , worldDemoBuffer :: DemoBuffer
   , worldConfiguration :: Configuration
+  , worldConsole :: Console
+  , worldShowConsole :: Bool
   }
 
 instance HasResources World where
@@ -68,6 +75,13 @@ instance HasSimulation World GameState where
 data Configuration = Configuration
   { cfgFullscreen :: Bool
   } deriving (Show)
+
+data Console = Console
+  { conHistory :: [String] -- ^ Executed commands and outputs.
+  , conCurrent :: String -- ^ Current, unexecuted command.
+  } deriving (Show)
+
+data ConsoleCmd = Insert Char | DeleteChar | DeleteLine | Confirm deriving (Show)
 
 defaultCfg :: Configuration
 defaultCfg = Configuration {
@@ -88,7 +102,9 @@ createWorld disp res demoBuffer gs = do
                  worldPaused = False,
                  worldCamera = defaultCamera,
                  worldDemoBuffer = demoBuffer,
-                 worldConfiguration = defaultCfg }
+                 worldConfiguration = defaultCfg,
+                 worldConsole = emptyConsole,
+                 worldShowConsole = False }
 
 execDefaultCfg :: World -> IO World
 execDefaultCfg = runCommand  "exec default.cfg"
@@ -98,6 +114,13 @@ runCommand line world =
   case parseCommand line of
     Left err -> putStrLn err >> pure world
     Right cmd -> evalCommand cmd world
+
+commands :: Commands
+commands = Map.fromList [
+  ("vid_fullscreen", fullscreenCmd),
+  ("exec", execCmd),
+  ("quit", quitCmd),
+  ("echo", echoCmd)]
 
 evalCommand :: Command -> World -> IO World
 evalCommand (FullscreenCmd f) world = do
@@ -115,6 +138,8 @@ evalCommand (ExecCmd fp) world = do
   case res of
     Right w -> pure w
     Left err -> putStr "exec " >> print err >> pure world
+evalCommand QuitCmd world = pure world { worldLoopState = Quit }
+evalCommand (EchoCmd args) world = putStrLn args >> pure world
 
 fullscreenCmd :: [CommandArg] -> Either String Command
 fullscreenCmd ["1"] = Right $ FullscreenCmd True
@@ -126,14 +151,45 @@ execCmd :: [CommandArg] -> Either String Command
 execCmd [fp] = Right $ ExecCmd fp
 execCmd _ = Left $ printf "Expected 1 argument"
 
+quitCmd :: [CommandArg] -> Either String Command
+quitCmd [] = Right QuitCmd
+quitCmd _ = Left $ printf "Expected 0 arguments"
+
+echoCmd :: [CommandArg] -> Either String Command
+echoCmd = Right . EchoCmd . unwords
+
 parseCommand :: String -> Either String Command
 parseCommand line =
   let cmd:args = words line
-  in case Map.lookup cmd commands of
+  in case Map.lookup (map toLower cmd) commands of
        Nothing -> Left $ printf "Command '%s' does not exist" cmd
        Just c -> c args
 
-commands :: Commands
-commands = Map.fromList [
-  ("vid_fullscreen", fullscreenCmd),
-  ("exec", execCmd)]
+runConsole :: ConsoleCmd -> World -> IO World
+runConsole Confirm w =
+  runCommand (conCurrent (worldConsole w)) w >>= pure . runConsole' Confirm
+runConsole cmd w = pure $ runConsole' cmd w
+
+runConsole' :: ConsoleCmd -> World -> World
+runConsole' cmd w =
+  let con = worldConsole w
+  in w { worldConsole = editConsole cmd con }
+
+emptyConsole :: Console
+emptyConsole = Console { conHistory = [], conCurrent = "" }
+
+editConsole :: ConsoleCmd -> Console -> Console
+editConsole (Insert c) con = con { conCurrent = conCurrent con ++ [c] }
+editConsole DeleteChar con
+  | null $ conCurrent con = con
+  | otherwise = con { conCurrent = init $ conCurrent con }
+editConsole DeleteLine con = con { conCurrent = "" }
+editConsole Confirm con = con { conHistory = conCurrent con : conHistory con,
+                                conCurrent = "" }
+
+handleConsoleEvent :: [KeyMod] -> KeyboardKey -> Maybe ConsoleCmd
+handleConsoleEvent keyMod key | Just c <- key2Char keyMod key = Just $ Insert c
+handleConsoleEvent _ KeyReturn = Just Confirm
+handleConsoleEvent _ KeyBackspace = Just DeleteChar
+handleConsoleEvent _ KeyEsc = Just DeleteLine
+handleConsoleEvent _ _ = Nothing

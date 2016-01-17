@@ -103,7 +103,8 @@ loop = do
     let Record fp = demoState
     liftIO . writeDemo fp =<< gets worldDemoBuffer
   unless (ls == Quit) $ do
-    liftIO getEvents >>= mapM_ handleEvent
+    (events, keyMod) <- liftIO getEvents
+    mapM_ (handleEvent keyMod) events
     paused <- gets worldPaused
     unless paused $ gets (timeDelta . worldTime) >>= runTics demoState
     case demoState of
@@ -132,7 +133,9 @@ loop = do
       fboTex <- gets $ (! 0) . fbColorTextures . resFbo . getResources
       gamma <- fromMaybe defaultGamma <$> asks argsGamma
       renderGamma gamma fboTex
-      displayStats -- Text rendering, ignore depth buffer.
+      -- Text rendering, ignore depth buffer.
+      displayStats
+      gets worldShowConsole >>= (`when` displayConsole)
       throwError
     resetFrameTimer
     updateTime
@@ -199,6 +202,14 @@ clearOldTiccmds = do
 timerInterval :: Double
 timerInterval = 500
 
+displayConsole :: (MonadBaseControl IO m, MonadState World m) => m ()
+displayConsole = do
+  conText <- (:) <$> conCurrent <*> conHistory <$> gets worldConsole
+  let x = 10
+      y = 600 * 0.9
+  forM_ (zip [0..] conText) $ \(i, line) ->
+    renderString x (y + i * 16) $ printf "> %s" line
+
 displayStats :: (MonadBaseControl IO m, MonadState World m) => m ()
 displayStats = do
   ft <- gets worldFrameTimer
@@ -230,26 +241,44 @@ updateTime = do
   modify $ \w -> w { worldTime = time { timeCurrent = newTime,
                                         timeDelta = newTime - oldTime } }
 
-handleEvent :: (MonadIO m, MonadState World m) => InputEvent -> m ()
-handleEvent QuitEvent = modify $ \w -> w { worldLoopState = Quit }
-handleEvent (KeyPressedEvent KeyLeft) = modify $ insertCmd Hasgel.Game.MoveLeft
-handleEvent (KeyReleasedEvent KeyLeft) = modify $ deleteCmd Hasgel.Game.MoveLeft
-handleEvent (KeyPressedEvent KeyRight) = modify $ insertCmd Hasgel.Game.MoveRight
-handleEvent (KeyReleasedEvent KeyRight) = modify $ deleteCmd Hasgel.Game.MoveRight
-handleEvent (KeyPressedEvent KeySpace) = modify $ insertCmd Shoot
-handleEvent (KeyReleasedEvent KeySpace) = modify $ deleteCmd Shoot
-handleEvent (KeyPressedEvent KeyP) = modify pausePressed
-handleEvent (KeyPressedEvent KeyW) = modify $ moveCamera MoveForward
-handleEvent (KeyPressedEvent KeyS) = modify $ moveCamera MoveBack
-handleEvent (KeyPressedEvent KeyA) = modify $ moveCamera Main.MoveLeft
-handleEvent (KeyPressedEvent KeyD) = modify $ moveCamera Main.MoveRight
-handleEvent (KeyPressedEvent KeyQ) = modify $ moveCamera MoveDown
-handleEvent (KeyPressedEvent KeyE) = modify $ moveCamera MoveUp
-handleEvent (KeyPressedEvent key) = liftIO $ printf "Pressed %s\n" (show key)
-handleEvent (KeyReleasedEvent key) = liftIO $ printf "Released %s\n" (show key)
-handleEvent (MouseMotionEvent motion mouseButtons) =
+handleEvent :: (MonadIO m, MonadState World m) => [KeyMod] -> InputEvent -> m ()
+handleEvent _ QuitEvent = modify $ \w -> w { worldLoopState = Quit }
+handleEvent _ (KeyPressedEvent KeyTilde) = toggleConsole
+handleEvent keyMod ev@(KeyPressedEvent key) = do
+  showConsole <- gets worldShowConsole
+  if showConsole
+    then case handleConsoleEvent keyMod key of
+           Just cmd -> get >>= liftIO . runConsole cmd >>= put
+           Nothing -> handleGameEvent ev
+    else handleGameEvent ev
+handleEvent _ ev = handleGameEvent ev
+
+handleGameEvent :: (MonadIO m, MonadState World m) => InputEvent -> m ()
+handleGameEvent (KeyPressedEvent KeyLeft) =
+  modify $ insertCmd Hasgel.Game.MoveLeft
+handleGameEvent (KeyReleasedEvent KeyLeft) =
+  modify $ deleteCmd Hasgel.Game.MoveLeft
+handleGameEvent (KeyPressedEvent KeyRight) =
+  modify $ insertCmd Hasgel.Game.MoveRight
+handleGameEvent (KeyReleasedEvent KeyRight) =
+  modify $ deleteCmd Hasgel.Game.MoveRight
+handleGameEvent (KeyPressedEvent KeySpace) = modify $ insertCmd Shoot
+handleGameEvent (KeyReleasedEvent KeySpace) = modify $ deleteCmd Shoot
+handleGameEvent (KeyPressedEvent KeyP) = modify pausePressed
+handleGameEvent (KeyPressedEvent KeyW) = modify $ moveCamera MoveForward
+handleGameEvent (KeyPressedEvent KeyS) = modify $ moveCamera MoveBack
+handleGameEvent (KeyPressedEvent KeyA) = modify $ moveCamera Main.MoveLeft
+handleGameEvent (KeyPressedEvent KeyD) = modify $ moveCamera Main.MoveRight
+handleGameEvent (KeyPressedEvent KeyQ) = modify $ moveCamera MoveDown
+handleGameEvent (KeyPressedEvent KeyE) = modify $ moveCamera MoveUp
+handleGameEvent (KeyPressedEvent key@(KeyUnknown _)) =
+  liftIO $ printf "Pressed %s\n" (show key)
+handleGameEvent (MouseMotionEvent motion mouseButtons) =
   when (ButtonLeft `elem` mouseButtons) $ modify (rotateCamera motion)
-handleEvent _ = pure ()
+handleGameEvent _ = pure ()
+
+toggleConsole :: MonadState World m => m ()
+toggleConsole = modify $ \w -> w { worldShowConsole = not $ worldShowConsole w }
 
 insertCmd :: PlayerCmd -> World -> World
 insertCmd cmd w | worldPaused w = w
