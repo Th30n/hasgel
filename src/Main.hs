@@ -206,7 +206,7 @@ displayConsole :: (MonadBaseControl IO m, MonadState World m) => m ()
 displayConsole = do
   conText <- (:) <$> conCurrent <*> conHistory <$> gets worldConsole
   let x = 10
-      y = 600 * 0.9
+      y = 600 * 0.85
   forM_ (zip [0..] conText) $ \(i, line) ->
     renderString x (y + i * 16) $ printf "> %s" line
 

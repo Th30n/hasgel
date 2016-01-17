@@ -112,7 +112,7 @@ execDefaultCfg = runCommand  "exec default.cfg"
 runCommand :: String -> World -> IO World
 runCommand line world =
   case parseCommand line of
-    Left err -> putStrLn err >> pure world
+    Left err -> pure $ printConsole err world
     Right cmd -> evalCommand cmd world
 
 commands :: Commands
@@ -137,9 +137,16 @@ evalCommand (ExecCmd fp) world = do
     foldM (flip runCommand) world cmdLines
   case res of
     Right w -> pure w
-    Left err -> putStr "exec " >> print err >> pure world
+    Left err -> pure $ printConsole ("exec " ++ show err) world
 evalCommand QuitCmd world = pure world { worldLoopState = Quit }
-evalCommand (EchoCmd args) world = putStrLn args >> pure world
+evalCommand (EchoCmd args) world = pure $ printConsole args world
+
+printConsole :: String -> World -> World
+printConsole msg w = let con = worldConsole w
+                     in w { worldConsole = printConsole' msg con }
+
+printConsole' :: String -> Console -> Console
+printConsole' msg con = con { conHistory = msg : conHistory con }
 
 fullscreenCmd :: [CommandArg] -> Either String Command
 fullscreenCmd ["1"] = Right $ FullscreenCmd True
@@ -167,7 +174,9 @@ parseCommand line =
 
 runConsole :: ConsoleCmd -> World -> IO World
 runConsole Confirm w =
-  runCommand (conCurrent (worldConsole w)) w >>= pure . runConsole' Confirm
+  let cmd = conCurrent $ worldConsole w
+      world = runConsole' Confirm w
+  in runCommand cmd world
 runConsole cmd w = pure $ runConsole' cmd w
 
 runConsole' :: ConsoleCmd -> World -> World
