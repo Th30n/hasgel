@@ -1,7 +1,6 @@
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Main ( main ) where
 
@@ -31,7 +30,6 @@ import qualified Linear as L
 import qualified SDL
 
 import Hasgel.Args
-import Hasgel.Configuration
 import Hasgel.Display
 import qualified Hasgel.FrameTimer as FT
 import Hasgel.Game (GameState (..), PlayerCmd (..), Ticcmd, addTiccmd,
@@ -41,8 +39,9 @@ import Hasgel.Input
 import Hasgel.Rendering
 import Hasgel.Resources
 import Hasgel.Simulation (HasSimulation (..), Milliseconds, Simulation (..),
-                          Time (..), Update, millis2Sec, simulate, simulation)
+                          Time (..), Update, millis2Sec, simulate)
 import Hasgel.Transform (rotateLocal, rotateWorld, translate)
+import Hasgel.World
 
 data CameraMovement =
   MoveForward
@@ -52,35 +51,6 @@ data CameraMovement =
   | MoveDown
   | MoveUp
   deriving (Show, Eq)
-
-data Loop = Continue | Quit deriving (Eq, Show)
-
-data World = World
-  { worldLoopState :: Loop
-  , worldDisplay :: Display
-  , worldTime :: Time
-  , worldResources :: Resources
-  , worldFrameTimer :: FT.FrameTimer
-  , worldSimulation :: Simulation GameState
-  , worldPlayerCmds :: Set PlayerCmd
-  , worldPaused :: Bool
-  , worldCamera :: Camera
-  , worldDemoBuffer :: DemoBuffer
-  }
-
-instance HasResources World where
-  getResources = worldResources
-  setResources w res = w { worldResources = res }
-
-instance FT.HasFrameTimer World where
-  getFrameTimer = worldFrameTimer
-  setFrameTimer w ft = w { worldFrameTimer = ft }
-
-instance HasSimulation World GameState where
-  getSimulation = worldSimulation
-  setSimulation w sim = w { worldSimulation = sim }
-
-newtype DemoBuffer = DemoBuffer Builder deriving (Monoid)
 
 type RandomSeed = Int
 
@@ -96,9 +66,6 @@ updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds
 
 main :: IO ()
 main = withSDL [SDL.InitVideo] . withDisplay $ \d -> do
-    let cfg = defaultCfg
-    when (cfgFullscreen cfg) $
-      SDL.setWindowMode (getWindow d) SDL.Fullscreen
     printGLInfo
     glViewport 0 0 800 600
     glEnable GL_CULL_FACE
@@ -111,11 +78,11 @@ main = withSDL [SDL.InitVideo] . withDisplay $ \d -> do
                        then beginRecording seed
                        else mempty
           game = gameState ticcmds (mkStdGen seed)
-      world <- createWorld d res demoBuffer game
+      world <- execDefaultCfg =<< createWorld d res demoBuffer game
       void $ execStateT (runReaderT loop args) world
 
 withSDL :: Foldable f => f SDL.InitFlag -> IO a -> IO a
-withSDL flags = bracket_ (SDL.initialize flags) (SDL.quit)
+withSDL flags = bracket_ (SDL.initialize flags) SDL.quit
 
 withDisplay :: (Display -> IO a) -> IO a
 withDisplay = bracket createDisplay destroyDisplay
@@ -126,21 +93,6 @@ printGLInfo = do
     printf "GL Renderer: %s\n" =<< getParam Renderer
     printf "GL Version: %s\n" =<< getParam Version
     printf "GLSL Version: %s\n" =<< getParam ShadingLanguageVersion
-
-createWorld :: Display -> Resources -> DemoBuffer -> GameState -> IO World
-createWorld disp res demoBuffer gs = do
-  time <- SDL.ticks
-  let [q1, q2, q3, q4] = timeQueries res
-  ft <- FT.createFrameTimer ((q1, q2), (q3, q4))
-  return World { worldLoopState = Continue,
-                 worldDisplay = disp,
-                 worldTime = Time time 0,
-                 worldResources = res, worldFrameTimer = ft,
-                 worldSimulation = simulation gs,
-                 worldPlayerCmds = Set.empty,
-                 worldPaused = False,
-                 worldCamera = defaultCamera,
-                 worldDemoBuffer = demoBuffer }
 
 loop :: (MonadIO m, MonadBaseControl IO m,
          MonadState World m, MonadReader Args m) => m ()
