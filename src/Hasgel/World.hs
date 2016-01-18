@@ -36,7 +36,7 @@ type CommandArg = String
 type CommandName = String
 
 data Command =
-  FullscreenCmd Bool
+  FullscreenCmd SDL.WindowMode
   | ExecCmd FilePath
   | QuitCmd
   | EchoCmd String
@@ -73,7 +73,7 @@ instance HasSimulation World GameState where
   setSimulation w sim = w { worldSimulation = sim }
 
 data Configuration = Configuration
-  { cfgFullscreen :: Bool
+  { cfgFullscreen :: SDL.WindowMode
   } deriving (Show)
 
 data Console = Console
@@ -85,7 +85,7 @@ data ConsoleCmd = Insert Char | DeleteChar | DeleteLine | Confirm deriving (Show
 
 defaultCfg :: Configuration
 defaultCfg = Configuration {
-  cfgFullscreen = False
+  cfgFullscreen = SDL.Windowed
   }
 
 createWorld :: Display -> Resources -> DemoBuffer -> GameState -> IO World
@@ -131,12 +131,12 @@ evalCommand (FullscreenCmd f) world = do
   if f == cfgFullscreen cfg
     then pure world
     else do
-    SDL.setWindowMode (getWindow d) $
       -- Use Maximized when restoring to windowed due to 'sdl2' bug.
       -- sdl2 uses SDL_RestoreWindow when passed Windowed flag, expecting it
       -- to restore window dimension (which isn't the case when fullscreen).
-      if f then SDL.Fullscreen else SDL.Maximized
-    pure world { worldConfiguration = cfg { cfgFullscreen = f } }
+      let mode = if f == SDL.Windowed then SDL.Maximized else f
+      SDL.setWindowMode (getWindow d) mode
+      pure world { worldConfiguration = cfg { cfgFullscreen = f } }
 evalCommand (ExecCmd fp) world = do
   res <- tryIOError $ do
     cmdLines <- lines <$> readFile fp
@@ -155,9 +155,10 @@ printConsole' :: String -> Console -> Console
 printConsole' msg con = con { conHistory = msg : conHistory con }
 
 fullscreenCmd :: [CommandArg] -> Either String Command
-fullscreenCmd ["1"] = Right $ FullscreenCmd True
-fullscreenCmd ["0"] = Right $ FullscreenCmd False
-fullscreenCmd [arg] = Left $ printf "Expected 1 or 0, got '%s'" arg
+fullscreenCmd ["2"] = Right $ FullscreenCmd SDL.FullscreenDesktop
+fullscreenCmd ["1"] = Right $ FullscreenCmd SDL.Fullscreen
+fullscreenCmd ["0"] = Right $ FullscreenCmd SDL.Windowed
+fullscreenCmd [arg] = Left $ printf "Expected 0, 1 or 2; got '%s'" arg
 fullscreenCmd _ = Left "Expected 1 argument"
 
 execCmd :: [CommandArg] -> Either String Command
