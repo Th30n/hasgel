@@ -110,6 +110,8 @@ execDefaultCfg :: World -> IO World
 execDefaultCfg = runCommand  "exec default.cfg"
 
 runCommand :: String -> World -> IO World
+-- Ignore empty commands.
+runCommand "" w = pure w
 runCommand line world =
   case parseCommand line of
     Left err -> pure $ printConsole err world
