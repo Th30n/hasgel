@@ -129,7 +129,11 @@ evalCommand (FullscreenCmd f) world = do
   if f == cfgFullscreen cfg
     then pure world
     else do
-    SDL.setWindowMode (getWindow d) $ if f then SDL.Fullscreen else SDL.Windowed
+    SDL.setWindowMode (getWindow d) $
+      -- Use Maximized when restoring to windowed due to 'sdl2' bug.
+      -- sdl2 uses SDL_RestoreWindow when passed Windowed flag, expecting it
+      -- to restore window dimension (which isn't the case when fullscreen).
+      if f then SDL.Fullscreen else SDL.Maximized
     pure world { worldConfiguration = cfg { cfgFullscreen = f } }
 evalCommand (ExecCmd fp) world = do
   res <- tryIOError $ do
