@@ -6,10 +6,10 @@ module Hasgel.Game (
 import Control.Arrow (first, second)
 import Control.Monad.State
 import Data.Foldable (foldl')
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import System.Random (StdGen, randomR)
 
-import Control.Lens ((^.))
+import Control.Lens (both, over, (^.))
 import Data.Binary (Binary)
 import qualified Data.Binary as B
 import qualified Linear as L
@@ -28,12 +28,16 @@ data GameState = GameState
   , gInvaders :: [Invader]
   , gExploded :: [Invader]
   , gInvaderDir :: InvaderDir
-  , gOldInvaderDir :: InvaderDir
-  , gStartMoveDown :: !Milliseconds
   , gShotRandom :: StdGen
   }
 
-data InvaderDir = DirLeft | DirRight | DirDown deriving (Eq, Show)
+data InvaderDir =
+  DirLeft
+  | DirRight
+    -- | Time in milliseconds when direction was set to down and the
+    -- previous direction.
+  | DirDown !Milliseconds InvaderDir
+  deriving (Eq, Show)
 
 data Invader = Invader
   { iTransform :: Transform
@@ -49,6 +53,18 @@ data Player = Player
     -- | Time when the player was shot and started exploding.
   , pExplodeTime :: Maybe Milliseconds
   }
+
+class Explodable a where
+  explode :: Time -> a -> a
+  hasExploded :: a -> Bool
+
+instance Explodable Player where
+  explode time player = player { pExplodeTime = Just $ timeCurrent time }
+  hasExploded = isJust . pExplodeTime
+
+instance Explodable Invader where
+  explode time inv = inv { iExplodeTime = Just $ timeCurrent time }
+  hasExploded = isJust . iExplodeTime
 
 -- | Commands for one tic of gameplay.
 data Ticcmd = Ticcmd
@@ -81,7 +97,7 @@ ticPlayer :: Time -> GameState -> GameState
 ticPlayer time gs
   | null (gTiccmds gs) = gs
   -- Player dead, consume a ticcmd.
-  | Just _ <- pExplodeTime $ gPlayer gs = execState (void popTiccmd) gs
+  | hasExploded $ gPlayer gs = execState (void popTiccmd) gs
   | otherwise = flip execState gs $ do
       ticcmd <- popTiccmd
       let speed = cmdMove ticcmd * millis2Sec (timeDelta time)
@@ -110,21 +126,20 @@ ticGame :: Time -> GameState -> GameState
 ticGame time = ticInvaders time . ticShots time . ticPlayer time
 
 ticShots :: Time -> GameState -> GameState
-ticShots time gs
-  | null (gShots gs) = gs
-  | otherwise =
-      let ships = gInvaders gs
-          player = gPlayer gs
-          shootables = pTransform player : map iTransform ships
-          (shots, shotIxs) = moveShots time shootables $ gShots gs
-          player' = if 0 `elem` shotIxs
-                    then player { pExplodeTime = Just $ timeCurrent time}
-                    else player
-          (ships', exs') = splitShot (map (\i -> i - 1) shotIxs) ships
-          exs'' = map (\e -> e { iExplodeTime = Just $ timeCurrent time }) exs'
-      in gs { gPlayer = player', gShots = shots,
-              gInvaders = reverse ships',
-              gExploded = gExploded gs ++ exs'' }
+ticShots _ gs | null $ gShots gs = gs
+ticShots time gs =
+  let ships = gInvaders gs
+      player = gPlayer gs
+      shootables = if not $ hasExploded player
+                   then pTransform player : map iTransform ships
+                   else map iTransform ships
+      (shots, shotIxs) = moveShots time shootables $ gShots gs
+      player' = if 0 `elem` shotIxs
+                then explode time player
+                else player
+      (ships', exs) = splitShot (map (\i -> i - 1) shotIxs) ships
+  in gs { gPlayer = player', gShots = shots, gInvaders = ships',
+          gExploded = gExploded gs ++ map (explode time) exs }
 
 type Shootable = Transform
 type Shot = Transform
@@ -142,8 +157,10 @@ moveShots time shootables = foldl' go ([], [])
             -- Hit at index 'i'.
             (_, Just i) -> second (i:) acc
 
+-- | Splits the invader list by index. Each indexed invader is put into the
+-- second list.
 splitShot :: [Int] -> [Invader] -> ([Invader], [Invader])
-splitShot ixs = foldl' go ([], []) . zip [0..]
+splitShot ixs = over both reverse . foldl' go ([], []) . zip [0..]
   where go (alive, shot) (i, ship) | i `elem` ixs = (alive, ship:shot)
                                    | otherwise = (ship:alive, shot)
 
@@ -159,12 +176,12 @@ ticInvaders time = execState $ do
     invaders <- gets gInvaders
     let shooters = filter (canShoot invaders) invaders
     modify $ \gs -> let (shots, rng) = invaderShoot shooters (gShotRandom gs)
-                    in gs { gShots = shots ++ gShots gs,
-                            gShotRandom = rng }
+                    in gs { gShots = shots ++ gShots gs, gShotRandom = rng }
 
--- | Return True if the given invader can shoot. This is the case when no
--- invader is in his line of sight.
+-- | Return True if the given invader can shoot. This is the case when the
+-- invader is alive and there are no invaders in his line of fire.
 canShoot :: [Invader] -> Invader -> Bool
+canShoot _ inv | hasExploded inv = False
 canShoot friends inv =
   let pos = transformPosition . iTransform
       posX i = pos i ^. L._x
@@ -176,56 +193,45 @@ canShoot friends inv =
                       leftX i >= rightX inv && rightX i >= rightX inv
   in all (\i -> above i || notBlocking i) $ filter (\i -> pos i /= pos inv) friends
 
-type ChangeDir = Bool
-
 -- | Move down for this amount of milliseconds.
 moveDownTime :: Milliseconds
 moveDownTime = 200
 
 moveInvaders :: Time -> GameState -> GameState
 moveInvaders time gs =
-  let shipSpeed = 1.5 * millis2Sec (timeDelta time)
-      transforms = map iTransform $ gInvaders gs
-      (changeDir, ships) = case gInvaderDir gs of
-                              DirLeft -> invaderHorMove (-shipSpeed) transforms
-                              DirRight -> invaderHorMove shipSpeed transforms
-                              DirDown ->
-                                invaderMoveDown time (gStartMoveDown gs) transforms
+  let dir = gInvaderDir gs
+      move i = i { iTransform = invaderMoveDir time dir $ iTransform i }
+      ships = move <$> gInvaders gs
+      movedDown = case dir of
+                    (DirDown start _) -> timeCurrent time - start >= moveDownTime
+                    _ -> False
+      changeDir = movedDown || any (not . inGameBounds . iTransform) ships
   in if not changeDir
-     then gs { gInvaders = map (flip Invader Nothing) ships }
-     else case gInvaderDir gs of
-            DirDown -> let newDir = if gOldInvaderDir gs == DirLeft
-                                    then DirRight
-                                    else DirLeft
-                       in gs { gInvaderDir = newDir }
-            dir -> gs { gInvaderDir = DirDown,
-                        gOldInvaderDir = dir,
-                        gStartMoveDown = timeCurrent time }
+     then gs { gInvaders = ships }
+     else gs { gInvaderDir = changeInvaderDir time (gInvaderDir gs) }
 
--- | Move invaders vertically down. Sets the 'ChangeDir' to 'True' when the
--- invaders have been moving down for 'moveDownTime'.
-invaderMoveDown :: Time -> Milliseconds -> [Transform] -> (ChangeDir, [Transform])
-invaderMoveDown time startTime ships
-  | timeCurrent time - startTime >= moveDownTime = (True, ships)
-  | otherwise = let dy = -5 * millis2Sec (timeDelta time)
-                in (False, fmap (`translate` L.V3 0 dy 0) ships)
+changeInvaderDir :: Time -> InvaderDir -> InvaderDir
+changeInvaderDir _ (DirDown _ DirLeft) = DirRight
+changeInvaderDir _ (DirDown _ DirRight) = DirLeft
+changeInvaderDir _ (DirDown _ _) = DirRight -- shouldn't happen
+changeInvaderDir time dir = DirDown (timeCurrent time) dir
 
--- | Moves all given invaders for the given horizontal offset and reports if the
--- direction of movement needs to change.
-invaderHorMove :: Float -> [Transform] -> (ChangeDir, [Transform])
-invaderHorMove _ [] = (False, [])
-invaderHorMove dx (ship:ships) =
-  let (c, ship') = invaderMove dx ship
-      (c', ships') = invaderHorMove dx ships
-  in (c || c', ship':ships')
+getInvaderSpeed :: Time -> Float
+getInvaderSpeed time = 1.5 * millis2Sec (timeDelta time)
 
--- | Moves the invader ship for the given horizontal offset. Returns a pair with
--- information whether to change the movement direction or not. The change
--- needs to happen when the invader hits the game field boundary.
-invaderMove :: Float -> Transform -> (ChangeDir, Transform)
-invaderMove dx ship = if outside then (True, ship) else (False, ship')
-  where ship' = translate ship $ L.V3 dx 0 0
-        outside = not $ inGameBounds ship'
+invaderMoveDir :: Time -> InvaderDir -> Transform -> Transform
+invaderMoveDir time (DirDown _ _) = invaderMoveDown time
+invaderMoveDir time DirLeft = invaderHorMove $ -getInvaderSpeed time
+invaderMoveDir time DirRight = invaderHorMove $ getInvaderSpeed time
+
+-- | Move invaders vertically down.
+invaderMoveDown :: Time -> Transform -> Transform
+invaderMoveDown time ship = let dy = -5 * millis2Sec (timeDelta time)
+                            in ship `translate` L.V3 0 dy 0
+
+-- | Moves the invader ship for the given horizontal offset.
+invaderHorMove :: Float -> Transform -> Transform
+invaderHorMove dx ship = translate ship $ L.V3 dx 0 0
 
 -- | Spawn shots for invader based on random generator.
 invaderShoot :: [Invader] -> StdGen -> ([Transform], StdGen)
@@ -291,5 +297,5 @@ gameState ticcmds shotGen =
   in GameState { gTiccmds = ticcmds, gOldTiccmds = [],
                  gPlayer = player, gShots = [],
                  gInvaders = createInvaders, gExploded = [],
-                 gInvaderDir = DirRight, gOldInvaderDir = DirLeft,
-                 gStartMoveDown = 0, gShotRandom = shotGen }
+                 gInvaderDir = DirRight,
+                 gShotRandom = shotGen }
