@@ -7,17 +7,21 @@ module Hasgel.World (
   createWorld, execDefaultCfg, handleConsoleEvent
 ) where
 
-import Control.Monad (foldM)
+import Control.Monad.State
 import Data.Char (toLower)
+import Data.Int (Int32)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set (Set)
 import qualified Data.Set as Set
 import System.IO.Error (tryIOError)
 import Text.Printf (printf)
+import Text.Read (readEither)
 
 import Data.ByteString.Builder
 
+import qualified Linear as L
+import SDL (($=))
 import qualified SDL
 
 import Hasgel.Display (Display (..))
@@ -25,7 +29,7 @@ import qualified Hasgel.FrameTimer as FT
 import Hasgel.Game (GameState, PlayerCmd)
 import Hasgel.Input
 import Hasgel.Rendering (Camera, defaultCamera)
-import Hasgel.Resources (HasResources (..), Resources (..))
+import Hasgel.Resources (HasResources (..), Resources (..), reloadFbo)
 import Hasgel.Simulation (HasSimulation (..), Simulation, Time (..), simulation)
 
 data Loop = Continue | Quit deriving (Eq, Show)
@@ -40,6 +44,7 @@ data Command =
   | ExecCmd FilePath
   | QuitCmd
   | EchoCmd String
+  | ResolutionCmd (L.V2 Int32)
   deriving (Show)
 
 type Commands = Map CommandName ([CommandArg] -> Either String Command)
@@ -74,6 +79,7 @@ instance HasSimulation World GameState where
 
 data Configuration = Configuration
   { cfgFullscreen :: SDL.WindowMode
+  , cfgResolution :: L.V2 Int32
   } deriving (Show)
 
 data Console = Console
@@ -85,7 +91,8 @@ data ConsoleCmd = Insert Char | DeleteChar | DeleteLine | Confirm deriving (Show
 
 defaultCfg :: Configuration
 defaultCfg = Configuration {
-  cfgFullscreen = SDL.Windowed
+  cfgFullscreen = SDL.Windowed,
+  cfgResolution = L.V2 800 600
   }
 
 createWorld :: Display -> Resources -> DemoBuffer -> GameState -> IO World
@@ -93,6 +100,7 @@ createWorld disp res demoBuffer gs = do
   time <- SDL.ticks
   let [q1, q2, q3, q4] = timeQueries res
   ft <- FT.createFrameTimer ((q1, q2), (q3, q4))
+  let scrDim = fromIntegral <$> cfgResolution defaultCfg
   return World { worldLoopState = Continue,
                  worldDisplay = disp,
                  worldTime = Time time 0,
@@ -100,7 +108,7 @@ createWorld disp res demoBuffer gs = do
                  worldSimulation = simulation gs,
                  worldPlayerCmds = Set.empty,
                  worldPaused = False,
-                 worldCamera = defaultCamera,
+                 worldCamera = defaultCamera scrDim,
                  worldDemoBuffer = demoBuffer,
                  worldConfiguration = defaultCfg,
                  worldConsole = emptyConsole,
@@ -120,11 +128,13 @@ runCommand line world =
 commands :: Commands
 commands = Map.fromList [
   ("vid_fullscreen", fullscreenCmd),
+  ("vid_resolution", resolutionCmd),
   ("exec", execCmd),
   ("quit", quitCmd),
   ("echo", echoCmd)]
 
 evalCommand :: Command -> World -> IO World
+
 evalCommand (FullscreenCmd f) world = do
   let d = worldDisplay world
       cfg = worldConfiguration world
@@ -137,6 +147,7 @@ evalCommand (FullscreenCmd f) world = do
       let mode = if f == SDL.Windowed then SDL.Maximized else f
       SDL.setWindowMode (getWindow d) mode
       pure world { worldConfiguration = cfg { cfgFullscreen = f } }
+
 evalCommand (ExecCmd fp) world = do
   res <- tryIOError $ do
     cmdLines <- lines <$> readFile fp
@@ -144,8 +155,20 @@ evalCommand (ExecCmd fp) world = do
   case res of
     Right w -> pure w
     Left err -> pure $ printConsole ("exec " ++ show err) world
+
 evalCommand QuitCmd world = pure world { worldLoopState = Quit }
+
 evalCommand (EchoCmd args) world = pure $ printConsole args world
+
+evalCommand (ResolutionCmd res) world
+  | cfgResolution (worldConfiguration world) == res = pure world
+evalCommand (ResolutionCmd res) world = flip execStateT world $ do
+  win <- gets $ getWindow . worldDisplay
+  cfg <- gets worldConfiguration
+  SDL.windowSize win $= fromIntegral <$> res
+  modify $ \w -> w { worldConfiguration = cfg { cfgResolution = res },
+                     worldCamera = defaultCamera $ fmap fromIntegral res }
+  reloadFbo res
 
 printConsole :: String -> World -> World
 printConsole msg w = let con = worldConsole w
@@ -163,14 +186,21 @@ fullscreenCmd _ = Left "Expected 1 argument"
 
 execCmd :: [CommandArg] -> Either String Command
 execCmd [fp] = Right $ ExecCmd fp
-execCmd _ = Left $ printf "Expected 1 argument"
+execCmd _ = Left "Expected 1 argument"
 
 quitCmd :: [CommandArg] -> Either String Command
 quitCmd [] = Right QuitCmd
-quitCmd _ = Left $ printf "Expected 0 arguments"
+quitCmd _ = Left "Expected 0 arguments"
 
 echoCmd :: [CommandArg] -> Either String Command
 echoCmd = Right . EchoCmd . unwords
+
+resolutionCmd :: [CommandArg] -> Either String Command
+resolutionCmd [widthStr, heightStr] = do
+  width <- readEither widthStr
+  height <- readEither heightStr
+  pure . ResolutionCmd $ L.V2 width height
+resolutionCmd _ = Left "Expected 2 arguments, width and height"
 
 parseCommand :: String -> Either String Command
 parseCommand line =

@@ -5,7 +5,7 @@ module Hasgel.Resources (
   Resources(..), HasResources(..),
   Programs, ProgramDesc, ShaderDesc,
   withResources, emptyPrograms, loadProgram, freePrograms,
-  getDrawable, putDrawable
+  getDrawable, putDrawable, reloadFbo
 ) where
 
 import Foreign (nullPtr)
@@ -17,6 +17,7 @@ import Control.Monad.State
 import Control.Monad.Trans.Control (MonadBaseControl (..))
 import qualified Data.Map.Strict as M
 import Data.Time (UTCTime)
+import Data.Int (Int32)
 import System.Directory (getModificationTime)
 import System.IO (hPutStrLn, stderr)
 import System.IO.Error (isDoesNotExistError, isPermissionError)
@@ -90,7 +91,7 @@ loadResources = do
     pointDrawable <- createPointDrawable
     let rsMap' = M.insert "point" pointDrawable $
                  M.insert "player-ship" rs rsMap
-    fbo <- createFbo
+    fbo <- createFbo $ L.V2 800 600
     pure Resources { resTex = tex, resLaserTex = laserTex, resFontTex = fontTex,
                      timeQueries = qs,
                      resPrograms = emptyPrograms,
@@ -111,13 +112,11 @@ setPlaneVao = runExceptT $ do
   mesh <- ExceptT $ loadHmd "share/models/plane.hmd"
   liftIO $ mesh2Drawable mesh
 
-createFbo :: IO GL.Framebuffer
-createFbo = do
+createFbo :: L.V2 Int32 -> IO GL.Framebuffer
+createFbo (L.V2 w h) = do
   colorTex <- GL.gen
   glActiveTexture GL_TEXTURE0
   glBindTexture GL_TEXTURE_2D $ GL.object colorTex
-  let w = 800
-      h = 600
   glTexImage2D GL_TEXTURE_2D 0 GL_RGBA w h 0 GL_RGBA GL_UNSIGNED_BYTE nullPtr
   glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MIN_FILTER GL_NEAREST
   glTexParameteri GL_TEXTURE_2D GL_TEXTURE_MAG_FILTER GL_LINEAR
@@ -140,8 +139,15 @@ loadTexture file = do
   SDL.freeSurface s
   pure tex
 
-getDrawable :: (HasResources s, MonadState s m) =>
-                 String -> m (Maybe Drawable)
+reloadFbo :: (HasResources s, MonadState s m, MonadBase IO m) =>
+             L.V2 Int32 -> m ()
+reloadFbo dim = do
+  liftBase . GL.delete =<< gets (resFbo . getResources)
+  fbo <- liftBase $ createFbo dim
+  res <- gets getResources
+  modify $ flip setResources res { resFbo = fbo }
+
+getDrawable :: (HasResources s, MonadState s m) => String -> m (Maybe Drawable)
 getDrawable name = M.lookup name . resDrawables <$> gets getResources
 
 putDrawable :: (HasResources s, MonadState s m) => String -> Drawable -> m ()

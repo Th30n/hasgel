@@ -75,10 +75,10 @@ axisProgramDesc = [("shaders/axis.vert", GL.VertexShader),
                    ("shaders/axis.geom", GL.GeometryShader),
                    ("shaders/color.frag", GL.FragmentShader)]
 
-persp :: L.M44 Float
-persp = persp''
+persp :: L.V2 Float -> L.M44 Float
+persp (L.V2 width height) = persp''
         where fovy = deg2Rad 60
-              ar = 800 / 600
+              ar = width / height
               n = 0.1
               f = 100
               -- Workaround for left out multiplication by 2
@@ -89,10 +89,10 @@ persp = persp''
 ortho :: L.M44 Float
 ortho = L.ortho (-2) 2 (-2) 2 (-2) 2
 
-defaultCamera :: Camera
-defaultCamera = Camera {
+defaultCamera :: L.V2 Float -> Camera
+defaultCamera dim = Camera {
   cameraTransform = defaultTransform { transformPosition = L.V3 0 10 20 },
-  cameraProjection = persp }
+  cameraProjection = persp dim }
 
 -- | Return the view rotation. This is the inverse of camera rotation.
 viewRotation :: Camera -> L.Quaternion Float
@@ -271,15 +271,15 @@ screenOrtho :: Float -> Float -> L.M44 Float
 screenOrtho width height = L.ortho 0 width 0 height (-1) 1
 
 renderString :: (HasResources s, MonadState s m, MonadBaseControl IO m) =>
-                Float -> Float -> String -> m ()
-renderString x y text = do
+                L.V2 Float -> Float -> Float -> String -> m ()
+renderString (L.V2 scrW scrH) x y text = do
   prog <- Res.loadProgram textProgramDesc
   Just plane <- Res.getDrawable "point"
   texture <- gets $ resFontTex . getResources
   liftBase $ do
     glActiveTexture GL_TEXTURE0
     glBindTexture GL_TEXTURE_2D $ GL.object texture
-    let proj = screenOrtho 800 600
+    let proj = screenOrtho scrW scrH
         cellWidth = 16 :: Int32
         cellHeight = 16 :: Int32
         charPos = charPosForFont 256 cellWidth cellHeight

@@ -18,6 +18,7 @@ import System.IO
 import System.Random (mkStdGen, randomIO)
 import Text.Printf (printf)
 
+import Control.Lens ((^.))
 import qualified Data.Binary as B
 import Data.Binary.Get (ByteOffset)
 import qualified Data.Binary.Get as B
@@ -67,8 +68,6 @@ updateGame _ cmds time gs = ticGame time $ addTiccmd gs $ buildTiccmd cmds
 main :: IO ()
 main = withSDL [SDL.InitVideo] . withDisplay $ \d -> do
     printGLInfo
-    glViewport 0 0 800 600
-    glEnable GL_CULL_FACE
     withResources $ \res -> do
       args <- getArgs
       (seed, ticcmds) <- case argsDemo args of
@@ -79,6 +78,7 @@ main = withSDL [SDL.InitVideo] . withDisplay $ \d -> do
                        else mempty
           game = gameState ticcmds (mkStdGen seed)
       world <- execDefaultCfg =<< createWorld d res demoBuffer game
+      glEnable GL_CULL_FACE
       void $ execStateT (runReaderT loop args) world
 
 withSDL :: Foldable f => f SDL.InitFlag -> IO a -> IO a
@@ -113,6 +113,7 @@ loop = do
       _ -> pure ()
     clearOldTiccmds
     disp <- gets worldDisplay
+    L.V2 scrW scrH <- gets $ cfgResolution . worldConfiguration
     renderDisplay disp . FT.withFrameTimer $ do
       fbo <- gets $ resFbo . getResources
       void . bindFramebuffer FramebufferTarget fbo $ do
@@ -127,7 +128,7 @@ loop = do
         glViewport 0 0 100 100
         lift $ renderCameraOrientation camera
         glDisable GL_DEPTH_TEST
-        glViewport 0 0 800 600
+        glViewport 0 0 scrW scrH
       -- Skip clearing draw buffer and depth testing for fullscreen quad.
       glDisable GL_DEPTH_TEST
       fboTex <- gets $ (! 0) . fbColorTextures . resFbo . getResources
@@ -205,10 +206,11 @@ timerInterval = 500
 displayConsole :: (MonadBaseControl IO m, MonadState World m) => m ()
 displayConsole = do
   conText <- (:) <$> conCurrent <*> conHistory <$> gets worldConsole
+  scrDim <- gets $ fmap fromIntegral . cfgResolution . worldConfiguration
   let x = 10
-      y = 600 * 0.85
+      y = scrDim ^. L._y * 0.85
   forM_ (zip [0..] conText) $ \(i, line) ->
-    renderString x (y + i * 16) $ printf "> %s" line
+    renderString scrDim x (y + i * 16) $ printf "> %s" line
 
 displayStats :: (MonadBaseControl IO m, MonadState World m) => m ()
 displayStats = do
@@ -218,11 +220,13 @@ displayStats = do
       gpuTime = FT.getGPUMax ft
       cpuStats s = printf "CPU: %.2fms %.2fFPS (%s)" s (1e3 / s)
       gpuStats = printf "GPU: %.2fms %.2fFPS (max)" gpuTime (1e3 / gpuTime)
-      x = 800 * 0.7
-      y = 600 * 0.92
-  renderString x y $ cpuStats cpuAvg "avg."
-  renderString x (y + 16) $ cpuStats cpuMax "max"
-  renderString x (y + 32) gpuStats
+  scrDim <- gets $ fmap fromIntegral . cfgResolution . worldConfiguration
+  let x = scrDim ^. L._x * 0.7
+      y = scrDim ^. L._y * 0.92
+      drawString = renderString scrDim
+  drawString x y $ cpuStats cpuAvg "avg."
+  drawString x (y + 16) $ cpuStats cpuMax "max"
+  drawString x (y + 32) gpuStats
 
 -- | Reset the frame timer every 'timerInterval'.
 resetFrameTimer :: (MonadIO m, MonadState World m) => m ()
