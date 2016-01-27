@@ -17,47 +17,35 @@ data-files:
   shaders/*.vert,
   shaders/*.frag
 
-executable hasgel
-  main-is: Main.hs
-  hs-source-dirs: src
-  build-depends:
-      attoparsec >= 0.13
-    , base >= 4.8
-    , containers >= 0.5
-    , directory >= 1.2
-    , gl >= 0.7
-    , lens >= 4.13
-    , lifted-base >= 0.2
-    , linear >= 1.20
-    , monad-control >= 1.0
-    , mtl >= 2.2
-    , sdl2 >= 2.1
-    , time >= 1.5
-    , transformers >= 0.3
-    , transformers-base >= 0.4
-    , binary >= 0.7
-    , deepseq >= 1.4
-    , array >= 0.5
-    , containers >= 0.5
-    , random >= 1.1
-    , bytestring >= 0.10
-  default-language: Haskell2010
-  ghc-options: -Wall -fwarn-tabs -rtsopts -O2
-  ghc-prof-options: -fprof-auto
-
 library
   default-language: Haskell2010
   hs-source-dirs: src
   ghc-options: -Wall -fwarn-tabs -O2
   exposed-modules:
-    Hasgel.Transform
-    Hasgel.Simulation
-    Hasgel.Mesh
-    Hasgel.Mesh.OBJ
+    Hasgel.Args
+    Hasgel.Display
+    Hasgel.Drawable
+    Hasgel.FrameTimer
+    Hasgel.Game
     Hasgel.Game.Movement
+    Hasgel.GL
+    Hasgel.GL.Attribute
+    Hasgel.GL.Buffer
+    Hasgel.GL.Framebuffer
+    Hasgel.GL.Object
+    Hasgel.GL.Param
+    Hasgel.GL.Program
+    Hasgel.GL.Shader
+    Hasgel.GL.Uniform
+    Hasgel.Input
+    Hasgel.Rendering
+    Hasgel.Resources
+    Hasgel.Simulation
+    Hasgel.Transform
+    Hasgel.World
   build-depends:
-      attoparsec >= 0.13
-    , base >= 4.8
+      hasgel-model
+    , base >= 4.8 && < 5.0
     , containers >= 0.5
     , directory >= 1.2
     , gl >= 0.7
@@ -71,26 +59,8 @@ library
     , transformers >= 0.3
     , transformers-base >= 0.4
     , binary >= 0.7
-    , deepseq >= 1.4
-    , array >= 0.5
-    , containers >= 0.5
     , random >= 1.1
     , bytestring >= 0.10
-
-executable obj2hmd
-  main-is: ObjToHmd.hs
-  hs-source-dirs: src
-  default-language: Haskell2010
-  ghc-options: -Wall -fwarn-tabs -rtsopts -O2
-  ghc-prof-options: -fprof-auto
-  build-depends:
-      base >= 4.8
-    , attoparsec >= 0.13
-    , linear >= 1.20
-    , binary
-    , deepseq
-    , array
-    , containers
 
 test-suite test-game-movement
   type: exitcode-stdio-1.0
@@ -99,9 +69,9 @@ test-suite test-game-movement
   default-language: Haskell2010
   ghc-options: -Wall -fwarn-tabs
   build-depends:
-      base >= 4.8
-    , hspec
+      hspec
     , hasgel
+    , base >= 4.8 && < 5.0
     , linear >= 1.20
     , lens >= 4.13
 
@@ -112,23 +82,27 @@ test-suite test-simulation
   default-language: Haskell2010
   ghc-options: -Wall -fwarn-tabs
   build-depends:
-      base >= 4.8
-    , hspec
+      hspec
     , hasgel
+    , base >= 4.8 && < 5.0
 
-benchmark bench-obj
-  type: exitcode-stdio-1.0
-  main-is: Hasgel/Mesh/Test/BenchOBJ.hs
-  hs-source-dirs: src
-  default-language: Haskell2010
-  ghc-options: -Wall -fwarn-tabs -O2 -rtsopts
+executable hasgel
+  main-is: Main.hs
+  hs-source-dirs: main
   build-depends:
-      base >= 4.8
-    , hasgel
-    , criterion
+      hasgel
+    , base >= 4.8 && < 5.0
+    , containers >= 0.5
+    , gl >= 0.7
+    , lens >= 4.13
     , linear >= 1.20
-    , attoparsec >= 0.13
+    , monad-control >= 1.0
+    , mtl >= 2.2
+    , sdl2 >= 2.1
     , binary >= 0.7
-    , deepseq
-    , array
-    , containers
+    , random >= 1.1
+    , bytestring >= 0.10
+  default-language: Haskell2010
+  ghc-options: -Wall -fwarn-tabs -rtsopts -O2
+  ghc-prof-options: -fprof-auto
+
